@@ -4,9 +4,9 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 
-from questions.models import Question
+from questions.models import Choice, Question
 from questions.paginations import PageNumberPagination
-from questions.serializers import QuestionSerializer
+from questions.serializers import ChoiceSerializer, QuestionSerializer
 
 # Create your views here.
 @api_view(['GET', 'POST'])
@@ -46,4 +46,46 @@ def question_detail(request, pk):
 
     elif request.method == 'DELETE':  # Delete a question
         question.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+@api_view(['GET', 'POST'])
+def choice_list(request):
+    if request.method == 'GET':
+        choices = Choice.objects.all()
+        
+        paginator = PageNumberPagination()
+        paginator.page_size = 5
+        paginated_choices = paginator.paginate_queryset(choices, request)
+        
+        serializer = ChoiceSerializer(paginated_choices, many=True)
+        return Response(serializer.data)
+
+    elif request.method == 'POST':
+        print(request.data)
+        serializer = ChoiceSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET', 'PUT', 'DELETE'])
+def choice_detail(request, pk):
+    try:
+        choice = Choice.objects.get(pk=pk)
+    except Choice.DoesNotExist:
+        return Response({'error': 'Choice not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        serializer = ChoiceSerializer(choice)
+        return Response(serializer.data)
+
+    elif request.method == 'PUT':
+        serializer = ChoiceSerializer(choice, data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    elif request.method == 'DELETE':
+        choice.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
