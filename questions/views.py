@@ -4,9 +4,9 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 
-from polls.models import Question
-from polls.paginations import PageNumberPagination
-from polls.serializers import QuestionSerializer
+from questions.models import Question
+from questions.paginations import PageNumberPagination
+from questions.serializers import QuestionSerializer
 
 # Create your views here.
 @api_view(['GET', 'POST'])
