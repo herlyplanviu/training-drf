@@ -2,6 +2,10 @@ from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import permission_classes, authentication_classes
+from rest_framework_simplejwt.authentication import JWTAuthentication
+
 
 
 from questions.models import Choice, Question
@@ -10,6 +14,8 @@ from questions.serializers import ChoiceSerializer, QuestionSerializer
 
 # Create your views here.
 @api_view(['GET', 'POST'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
 def question_list(request):
     if request.method == 'GET':
         questions = Question.objects.order_by("-pub_date")
