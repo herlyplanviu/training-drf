@@ -87,7 +87,9 @@ def choice_list(request):
         return Response(serializer.data)
 
     elif request.method == 'POST':
-        print(request.data)
+        if not request.user.has_perm('choices.add_choice'):
+            return Response(status=403)
+        
         serializer = ChoiceSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -102,10 +104,16 @@ def choice_detail(request, pk):
         return Response({'error': 'Choice not found'}, status=status.HTTP_404_NOT_FOUND)
 
     if request.method == 'GET':
+        if not request.user.has_perm('choices.view_choice'):
+            return Response(status=403)
+        
         serializer = ChoiceSerializer(choice)
         return Response(serializer.data)
 
     elif request.method == 'PUT':
+        if not request.user.has_perm('choices.change_choice'):
+            return Response(status=403)
+        
         serializer = ChoiceSerializer(choice, data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -113,5 +121,8 @@ def choice_detail(request, pk):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     elif request.method == 'DELETE':
+        if not request.user.has_perm('choices.delete_choice'):
+            return Response(status=403)
+        
         choice.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
