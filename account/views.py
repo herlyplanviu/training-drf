@@ -8,7 +8,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 @api_view(['GET'])
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticated])
-def get_user_permissions(request):
+def get_user(request):
     user = request.user  # Get the current authenticated user
 
     # Get direct user permissions
@@ -20,4 +20,11 @@ def get_user_permissions(request):
     # Combine both sets of permissions
     all_permissions = user_permissions.union(group_permissions)
 
-    return Response({"permissions": list(all_permissions)})
+    response_data = {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "permissions": list(all_permissions)
+        }
+
+    return Response(response_data)

@@ -4,5 +4,5 @@ from . import views
 
 urlpatterns = [
     # ex: /polls/
-    path("profile/permissions/", views.get_user_permissions, name="profile_permissions"),
+    path("profile/", views.get_user, name="profile"),
 ]
