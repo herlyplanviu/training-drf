@@ -40,8 +40,9 @@ def question_list(request):
             return Response(serializer.data, status=status.HTTP_201_CREATED)  # Return created data
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)  # Handle errors
     
-# Retrieve, update (PUT), or delete (DELETE) a single question
 @api_view(['GET', 'PUT', 'DELETE'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
 def question_detail(request, pk):
     question = get_object_or_404(Question, pk=pk)
 
@@ -97,6 +98,8 @@ def choice_list(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['GET', 'PUT', 'DELETE'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
 def choice_detail(request, pk):
     try:
         choice = Choice.objects.get(pk=pk)
