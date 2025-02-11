@@ -31,6 +31,9 @@ def question_list(request):
         return paginator.get_paginated_response(serializer.data)
 
     elif request.method == 'POST':
+        if not request.user.has_perm('questions.add_question'):
+            return Response(status=403)
+        
         serializer = QuestionSerializer(data=request.data)  # Deserialize input data
         if serializer.is_valid():
             serializer.save()  # Save if valid
@@ -43,10 +46,16 @@ def question_detail(request, pk):
     question = get_object_or_404(Question, pk=pk)
 
     if request.method == 'GET':
+        if not request.user.has_perm('questions.view_question'):
+            return Response(status=403)
+        
         serializer = QuestionSerializer(question)
         return Response(serializer.data)
 
     elif request.method == 'PUT':  # Update an existing question
+        if not request.user.has_perm('questions.change_question'):
+            return Response(status=403)
+        
         serializer = QuestionSerializer(question, data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -54,6 +63,9 @@ def question_detail(request, pk):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     elif request.method == 'DELETE':  # Delete a question
+        if not request.user.has_perm('questions.delete_question'):
+            return Response(status=403)
+        
         question.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
     
