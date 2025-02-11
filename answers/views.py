@@ -59,9 +59,15 @@ def answer_list(request):
     elif request.method == 'POST':
         if not request.user.has_perm('answers.add_answer'):
             return Response(status=403)
-        
+
+        question_id = request.data.get('question')  # Get question_id from request data
+
+        if Answer.objects.filter(question_id=question_id, user=request.user).exists():
+            return Response({'error': 'You have already answered this question.'}, status=400)
+
         serializer = AnswerSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save(user=request.user)
             return Response(serializer.data, status=201)
+        
         return Response(serializer.errors, status=400)
