@@ -19,13 +19,22 @@ def get_user(request):
 
     # Combine both sets of permissions
     all_permissions = user_permissions.union(group_permissions)
+    
+    l = request.user.groups.values_list('name',flat = True) # QuerySet Object
+    l_as_list = list(l)                                     # QuerySet to `list`
 
     response_data = {
             "id": user.id,
+            "name": {
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "full_name": f"{user.first_name} {user.last_name}"
+                },
             "username": user.username,
             "email": user.email,
             "avatar": user.avatar,
             "is_active": user.is_active,
+            "roles": l_as_list,
             "permissions": list(all_permissions)
         }
 

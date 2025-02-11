@@ -74,7 +74,7 @@ def question_detail(request, pk):
 @permission_classes([IsAuthenticated])
 def choice_list(request):
     if request.method == 'GET':
-        if not request.user.has_perm('choices.view_choice'):
+        if not request.user.has_perm('questions.view_choice'):
             return Response(status=403)
         
         choices = Choice.objects.all()
@@ -87,7 +87,7 @@ def choice_list(request):
         return Response(serializer.data)
 
     elif request.method == 'POST':
-        if not request.user.has_perm('choices.add_choice'):
+        if not request.user.has_perm('questions.add_choice'):
             return Response(status=403)
         
         serializer = ChoiceSerializer(data=request.data)
@@ -104,14 +104,14 @@ def choice_detail(request, pk):
         return Response({'error': 'Choice not found'}, status=status.HTTP_404_NOT_FOUND)
 
     if request.method == 'GET':
-        if not request.user.has_perm('choices.view_choice'):
+        if not request.user.has_perm('questions.view_choice'):
             return Response(status=403)
         
         serializer = ChoiceSerializer(choice)
         return Response(serializer.data)
 
     elif request.method == 'PUT':
-        if not request.user.has_perm('choices.change_choice'):
+        if not request.user.has_perm('questions.change_choice'):
             return Response(status=403)
         
         serializer = ChoiceSerializer(choice, data=request.data)
@@ -121,7 +121,7 @@ def choice_detail(request, pk):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     elif request.method == 'DELETE':
-        if not request.user.has_perm('choices.delete_choice'):
+        if not request.user.has_perm('questions.delete_choice'):
             return Response(status=403)
         
         choice.delete()
