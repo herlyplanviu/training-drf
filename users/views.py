@@ -24,6 +24,8 @@ def get_user(request):
             "id": user.id,
             "username": user.username,
             "email": user.email,
+            "avatar": user.avatar,
+            "is_active": user.is_active,
             "permissions": list(all_permissions)
         }
 
