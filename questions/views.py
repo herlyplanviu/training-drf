@@ -18,6 +18,9 @@ from questions.serializers import ChoiceSerializer, QuestionSerializer
 @permission_classes([IsAuthenticated])
 def question_list(request):
     if request.method == 'GET':
+        if not request.user.has_perm('questions.view_question'):
+            return Response(status=403)
+        
         questions = Question.objects.order_by("-pub_date")
 
         paginator = PageNumberPagination()
@@ -55,8 +58,13 @@ def question_detail(request, pk):
         return Response(status=status.HTTP_204_NO_CONTENT)
     
 @api_view(['GET', 'POST'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
 def choice_list(request):
     if request.method == 'GET':
+        if not request.user.has_perm('choices.view_choice'):
+            return Response(status=403)
+        
         choices = Choice.objects.all()
         
         paginator = PageNumberPagination()

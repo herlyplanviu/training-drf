@@ -4,6 +4,8 @@ from .models import Question, Choice
 # Choice Serializer (for nested relationship)
 class ChoiceSerializer(serializers.ModelSerializer):
     question = serializers.PrimaryKeyRelatedField(queryset=Question.objects.all())
+    
+    is_answer = serializers.BooleanField(required=True)
     class Meta:
         model = Choice
         fields = ['id', 'choice_text', 'is_answer', 'question']
