@@ -8,6 +8,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 
 
 
+from answers.models import Answer
 from questions.models import Choice, Question
 from questions.paginations import PageNumberPagination
 from questions.serializers import ChoiceSerializer, QuestionSerializer
@@ -20,15 +21,21 @@ def question_list(request):
     if request.method == 'GET':
         if not request.user.has_perm('questions.view_question'):
             return Response(status=403)
-        
-        questions = Question.objects.order_by("-pub_date")
+
+        questions = Question.objects.order_by("id")
 
         paginator = PageNumberPagination()
         paginator.page_size = 5
         paginated_questions = paginator.paginate_queryset(questions, request)
 
-        serializer = QuestionSerializer(paginated_questions, many=True)
-        return paginator.get_paginated_response(serializer.data)
+        question_responses = []
+        for question in paginated_questions:
+            answer_exists = Answer.objects.filter(question=question, user=request.user).exists()
+            serialized_question = QuestionSerializer(question).data
+            serialized_question["is_answered"] = answer_exists
+            question_responses.append(serialized_question)
+
+        return paginator.get_paginated_response(question_responses)
 
     elif request.method == 'POST':
         if not request.user.has_perm('questions.add_question'):
@@ -50,8 +57,13 @@ def question_detail(request, pk):
         if not request.user.has_perm('questions.view_question'):
             return Response(status=403)
         
+        answer_exists = Answer.objects.filter(question=question, user=request.user).exists()
+
         serializer = QuestionSerializer(question)
-        return Response(serializer.data)
+        question_data = serializer.data
+        question_data["is_answered"] = answer_exists  # Add 'is_answered' field to response
+        
+        return Response(question_data)
 
     elif request.method == 'PUT':  # Update an existing question
         if not request.user.has_perm('questions.change_question'):
