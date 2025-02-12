@@ -5,17 +5,18 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import permission_classes, authentication_classes
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework.authentication import BasicAuthentication, SessionAuthentication
 
 
 
 from answers.models import Answer
 from questions.models import Choice, Question
 from questions.paginations import PageNumberPagination
-from questions.serializers import ChoiceSerializer, QuestionSerializer
+from questions.serializers import ChoiceSerializer, QuestionOnlySerializer, QuestionSerializer
 
 # Create your views here.
 @api_view(['GET', 'POST'])
-@authentication_classes([JWTAuthentication])
+@authentication_classes([JWTAuthentication,BasicAuthentication,SessionAuthentication])
 @permission_classes([IsAuthenticated])
 def question_list(request):
     if request.method == 'GET':
@@ -31,7 +32,10 @@ def question_list(request):
         question_responses = []
         for question in paginated_questions:
             answer_exists = Answer.objects.filter(question=question, user=request.user).exists()
-            serialized_question = QuestionSerializer(question).data
+            if request.GET.get("choices") is "0":
+                serialized_question = QuestionOnlySerializer(question).data
+            else:
+                serialized_question = QuestionSerializer(question).data
             serialized_question["is_answered"] = answer_exists
             question_responses.append(serialized_question)
 
@@ -48,7 +52,7 @@ def question_list(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)  # Handle errors
     
 @api_view(['GET', 'PUT', 'DELETE'])
-@authentication_classes([JWTAuthentication])
+@authentication_classes([JWTAuthentication,BasicAuthentication,SessionAuthentication])
 @permission_classes([IsAuthenticated])
 def question_detail(request, pk):
     question = get_object_or_404(Question, pk=pk)
@@ -83,7 +87,7 @@ def question_detail(request, pk):
         return Response(status=status.HTTP_204_NO_CONTENT)
     
 @api_view(['GET', 'POST'])
-@authentication_classes([JWTAuthentication])
+@authentication_classes([JWTAuthentication,BasicAuthentication,SessionAuthentication])
 @permission_classes([IsAuthenticated])
 def choice_list(request):
     if request.method == 'GET':
@@ -110,7 +114,7 @@ def choice_list(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['GET', 'PUT', 'DELETE'])
-@authentication_classes([JWTAuthentication])
+@authentication_classes([JWTAuthentication,BasicAuthentication,SessionAuthentication])
 @permission_classes([IsAuthenticated])
 def choice_detail(request, pk):
     try:

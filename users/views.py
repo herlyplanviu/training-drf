@@ -5,10 +5,11 @@ from rest_framework.decorators import permission_classes, authentication_classes
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework import status
 from users.serializers import UserProfileSerializer
+from rest_framework.authentication import BasicAuthentication, SessionAuthentication
 
 # Create your views here.
 @api_view(['GET'])
-@authentication_classes([JWTAuthentication])
+@authentication_classes([JWTAuthentication,BasicAuthentication,SessionAuthentication])
 @permission_classes([IsAuthenticated])
 def get_user(request):
     user = request.user  # Get the current authenticated user
@@ -43,7 +44,7 @@ def get_user(request):
     return Response(response_data)
 
 @api_view(['PUT'])
-@authentication_classes([JWTAuthentication])
+@authentication_classes([JWTAuthentication,BasicAuthentication,SessionAuthentication])
 @permission_classes([IsAuthenticated])
 def change_avatar(request):
     user = request.user

@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import permission_classes, authentication_classes
 from rest_framework_simplejwt.authentication import JWTAuthentication
-
+from rest_framework.authentication import BasicAuthentication, SessionAuthentication
 from answers.models import Answer
 from answers.serializers import AnswerSerializer
 from questions.models import Choice, Question
@@ -12,7 +12,7 @@ from questions.paginations import PageNumberPagination
 
 # Create your views here.
 @api_view(['GET', 'POST'])
-@authentication_classes([JWTAuthentication])
+@authentication_classes([JWTAuthentication,BasicAuthentication,SessionAuthentication])
 @permission_classes([IsAuthenticated])
 def answer_list(request):
     if request.method == 'GET':
