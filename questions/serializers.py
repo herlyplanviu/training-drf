@@ -5,7 +5,7 @@ from .models import Question, Choice
 class ChoiceSerializer(serializers.ModelSerializer):
     question = serializers.PrimaryKeyRelatedField(queryset=Question.objects.all())
     
-    is_answer = serializers.BooleanField(required=True)
+    is_answer = serializers.BooleanField(required=False)
     class Meta:
         model = Choice
         fields = ['id', 'choice_text', 'is_answer', 'question']

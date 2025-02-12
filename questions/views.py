@@ -1,38 +1,41 @@
 from django.shortcuts import get_object_or_404
-from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework import status, viewsets
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.decorators import permission_classes, authentication_classes
-from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.authentication import BasicAuthentication, SessionAuthentication
-
-
-
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from answers.models import Answer
 from questions.models import Choice, Question
 from questions.paginations import PageNumberPagination
 from questions.serializers import ChoiceSerializer, QuestionOnlySerializer, QuestionSerializer
 
-# Create your views here.
-@api_view(['GET', 'POST'])
-@authentication_classes([JWTAuthentication,BasicAuthentication,SessionAuthentication])
-@permission_classes([IsAuthenticated])
-def question_list(request):
-    if request.method == 'GET':
+
+class QuestionViewSet(viewsets.ModelViewSet):
+    queryset = Question.objects.all().order_by('id')
+    serializer_class = QuestionSerializer
+    authentication_classes = [JWTAuthentication, BasicAuthentication, SessionAuthentication]
+    permission_classes = [IsAuthenticatedOrReadOnly]
+    pagination_class = PageNumberPagination
+
+    def get_permissions(self):
+        # Only authenticated users can create, update, or delete
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            self.permission_classes = [IsAuthenticated]
+        return super().get_permissions()
+
+    def list(self, request, *args, **kwargs):
         if not request.user.has_perm('questions.view_question'):
-            return Response(status=403)
+            return Response(status=status.HTTP_403_FORBIDDEN)
 
-        questions = Question.objects.order_by("id")
-
-        paginator = PageNumberPagination()
+        questions = self.queryset
+        paginator = self.pagination_class()
         paginator.page_size = 5
         paginated_questions = paginator.paginate_queryset(questions, request)
 
         question_responses = []
         for question in paginated_questions:
             answer_exists = Answer.objects.filter(question=question, user=request.user).exists()
-            if request.GET.get("choices") is "0":
+            if request.GET.get("choices") == "0":
                 serialized_question = QuestionOnlySerializer(question).data
             else:
                 serialized_question = QuestionSerializer(question).data
@@ -41,107 +44,113 @@ def question_list(request):
 
         return paginator.get_paginated_response(question_responses)
 
-    elif request.method == 'POST':
-        if not request.user.has_perm('questions.add_question'):
-            return Response(status=403)
-        
-        serializer = QuestionSerializer(data=request.data)  # Deserialize input data
-        if serializer.is_valid():
-            serializer.save()  # Save if valid
-            return Response(serializer.data, status=status.HTTP_201_CREATED)  # Return created data
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)  # Handle errors
-    
-@api_view(['GET', 'PUT', 'DELETE'])
-@authentication_classes([JWTAuthentication,BasicAuthentication,SessionAuthentication])
-@permission_classes([IsAuthenticated])
-def question_detail(request, pk):
-    question = get_object_or_404(Question, pk=pk)
-
-    if request.method == 'GET':
+    def retrieve(self, request, *args, **kwargs):
+        question = get_object_or_404(self.queryset, pk=kwargs['pk'])
         if not request.user.has_perm('questions.view_question'):
-            return Response(status=403)
+            return Response(status=status.HTTP_403_FORBIDDEN)
         
         answer_exists = Answer.objects.filter(question=question, user=request.user).exists()
 
-        serializer = QuestionSerializer(question)
+        serializer = self.get_serializer(question)
         question_data = serializer.data
-        question_data["is_answered"] = answer_exists  # Add 'is_answered' field to response
+        question_data["is_answered"] = answer_exists
         
         return Response(question_data)
-
-    elif request.method == 'PUT':  # Update an existing question
-        if not request.user.has_perm('questions.change_question'):
-            return Response(status=403)
-        
-        serializer = QuestionSerializer(question, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    elif request.method == 'DELETE':  # Delete a question
-        if not request.user.has_perm('questions.delete_question'):
-            return Response(status=403)
-        
-        question.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
     
-@api_view(['GET', 'POST'])
-@authentication_classes([JWTAuthentication,BasicAuthentication,SessionAuthentication])
-@permission_classes([IsAuthenticated])
-def choice_list(request):
-    if request.method == 'GET':
-        if not request.user.has_perm('questions.view_choice'):
-            return Response(status=403)
+    def create(self, request, *args, **kwargs):
+        # Check permission for creating a question
+        if not request.user.has_perm('questions.add_question'):
+            return Response(status=status.HTTP_403_FORBIDDEN)
         
-        choices = Choice.objects.all()
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
         
-        paginator = PageNumberPagination()
-        paginator.page_size = 5
-        paginated_choices = paginator.paginate_queryset(choices, request)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        question = get_object_or_404(self.queryset, pk=kwargs['pk'])
         
-        serializer = ChoiceSerializer(paginated_choices, many=True)
+        # Check permission for updating a question
+        if not request.user.has_perm('questions.change_question'):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        
+        serializer = self.get_serializer(question, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        
         return Response(serializer.data)
 
-    elif request.method == 'POST':
+    def destroy(self, request, *args, **kwargs):
+        question = get_object_or_404(self.queryset, pk=kwargs['pk'])
+        
+        # Check permission for deleting a question
+        if not request.user.has_perm('questions.delete_question'):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        
+        self.perform_destroy(question)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+class ChoiceViewSet(viewsets.ModelViewSet):
+    queryset = Choice.objects.all()
+    serializer_class = ChoiceSerializer
+    authentication_classes = [JWTAuthentication, BasicAuthentication, SessionAuthentication]
+    permission_classes = [IsAuthenticatedOrReadOnly]
+    pagination_class = PageNumberPagination
+
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            self.permission_classes = [IsAuthenticated]
+        return super().get_permissions()
+    
+    def list(self, request, *args, **kwargs):
+        if not request.user.has_perm('questions.view_choice'):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        paginator = self.pagination_class()
+        paginated_choices = paginator.paginate_queryset(self.queryset, request)
+        
+        serializer = self.get_serializer(paginated_choices, many=True)
+        return paginator.get_paginated_response(serializer.data)
+    
+    def retrieve(self, request, *args, **kwargs):
+        choice = get_object_or_404(self.queryset, pk=kwargs['pk'])
+        if not request.user.has_perm('questions.view_choice'):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        
+        serializer = self.get_serializer(choice)
+        return Response(serializer.data)
+    
+    def create(self, request, *args, **kwargs):
+        # Check permission for creating a choice
         if not request.user.has_perm('questions.add_choice'):
-            return Response(status=403)
+            return Response(status=status.HTTP_403_FORBIDDEN)
         
-        serializer = ChoiceSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-@api_view(['GET', 'PUT', 'DELETE'])
-@authentication_classes([JWTAuthentication,BasicAuthentication,SessionAuthentication])
-@permission_classes([IsAuthenticated])
-def choice_detail(request, pk):
-    try:
-        choice = Choice.objects.get(pk=pk)
-    except Choice.DoesNotExist:
-        return Response({'error': 'Choice not found'}, status=status.HTTP_404_NOT_FOUND)
-
-    if request.method == 'GET':
-        if not request.user.has_perm('questions.view_choice'):
-            return Response(status=403)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
         
-        serializer = ChoiceSerializer(choice)
-        return Response(serializer.data)
-
-    elif request.method == 'PUT':
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+    def update(self, request, *args, **kwargs):
+        choice = get_object_or_404(self.queryset, pk=kwargs['pk'])
+        
+        # Check permission for updating a choice
         if not request.user.has_perm('questions.change_choice'):
-            return Response(status=403)
+            return Response(status=status.HTTP_403_FORBIDDEN)
         
-        serializer = ChoiceSerializer(choice, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    elif request.method == 'DELETE':
+        serializer = self.get_serializer(choice, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        
+        return Response(serializer.data)
+    
+    def destroy(self, request, *args, **kwargs):
+        choice = get_object_or_404(self.queryset, pk=kwargs['pk'])
+        
+        # Check permission for deleting a choice
         if not request.user.has_perm('questions.delete_choice'):
-            return Response(status=403)
+            return Response(status=status.HTTP_403_FORBIDDEN)
         
-        choice.delete()
+        self.perform_destroy(choice)
         return Response(status=status.HTTP_204_NO_CONTENT)
