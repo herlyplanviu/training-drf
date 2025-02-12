@@ -8,10 +8,15 @@ from answers.models import Answer
 from questions.models import Choice, Question
 from questions.paginations import PageNumberPagination
 from questions.serializers import ChoiceSerializer, QuestionOnlySerializer, QuestionSerializer
+from rest_framework.generics import ListAPIView
 
-
+class QuestionList(ListAPIView): 
+    queryset = Question.objects.all()
+    serializer_class = QuestionSerializer
+    pagination_class = PageNumberPagination
+    
 class QuestionViewSet(viewsets.ModelViewSet):
-    queryset = Question.objects.all().order_by('id')
+    queryset = Question.objects.all()
     serializer_class = QuestionSerializer
     authentication_classes = [JWTAuthentication, BasicAuthentication, SessionAuthentication]
     permission_classes = [IsAuthenticatedOrReadOnly]
