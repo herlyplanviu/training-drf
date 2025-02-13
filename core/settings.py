@@ -43,7 +43,8 @@ INSTALLED_APPS = [
     'drf_redesign',
     'rest_framework',
     'users.apps.UserConfig',
-    'answers.apps.AnswersConfig'
+    'answers.apps.AnswersConfig',
+    'quizzes.apps.QuizzesConfig'
 ]
 
 MIDDLEWARE = [
