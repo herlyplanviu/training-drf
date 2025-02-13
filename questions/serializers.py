@@ -22,7 +22,6 @@ class QuestionSerializer(serializers.ModelSerializer):
         fields = ['id', 'question_text', 'pub_date', 'choices', 'quiz']  # Include 'choices'
         
 class QuestionOnlySerializer(serializers.ModelSerializer):
-    quiz = QuizOnlySerializer(many=False, read_only=True)
     class Meta:
         model = Question
-        fields = ['id', 'question_text', 'pub_date', 'quiz']  # Include 'choices'
+        fields = ['id']  # Include 'choices'
