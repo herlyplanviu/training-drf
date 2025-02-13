@@ -22,34 +22,31 @@ class QuizViewSet(viewsets.ModelViewSet):
         return super().get_permissions()
 
     def list(self, request, *args, **kwargs):
+    # Check permission for viewing quizzes
         if not request.user.has_perm('quizzes.view_quiz'):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
+        # Apply pagination
         quizzes = self.queryset
         paginator = self.pagination_class()
         paginator.page_size = 5
         paginated_quizzes = paginator.paginate_queryset(quizzes, request)
 
-        quiz_responses = []
-        for quiz in paginated_quizzes:
-            is_answered = quiz.user == request.user  # Or however you check quiz completion
-            serialized_quiz = QuizOnlySerializer(quiz).data
-            serialized_quiz["is_answered"] = is_answered
-            quiz_responses.append(serialized_quiz)
+        # Serialize the paginated data
+        serializer = self.get_serializer(paginated_quizzes, many=True)
+        
+        # Return paginated response
+        return paginator.get_paginated_response(serializer.data)
 
-        return paginator.get_paginated_response(quiz_responses)
 
     def retrieve(self, request, *args, **kwargs):
         quiz = get_object_or_404(self.queryset, pk=kwargs['pk'])
         if not request.user.has_perm('quizzes.view_quiz'):
             return Response(status=status.HTTP_403_FORBIDDEN)
         
-        is_answered = quiz.user == request.user
         serializer = self.get_serializer(quiz)
-        quiz_data = serializer.data
-        quiz_data["is_answered"] = is_answered
         
-        return Response(quiz_data)
+        return Response(serializer.data)
     
     def create(self, request, *args, **kwargs):
         if not request.user.has_perm('quizzes.add_quiz'):
