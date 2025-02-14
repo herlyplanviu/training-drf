@@ -17,6 +17,8 @@ class QuizViewSet(viewsets.ModelViewSet):
     authentication_classes = [JWTAuthentication, BasicAuthentication, SessionAuthentication]
     permission_classes = [IsAuthenticatedOrReadOnly]
     pagination_class = PageNumberPagination
+    
+    #if using filter class
     filter_backends = (filters.DjangoFilterBackend,)
     filterset_class = QuizFilter
 
@@ -29,9 +31,28 @@ class QuizViewSet(viewsets.ModelViewSet):
         # Check permission for viewing quizzes
         if not request.user.has_perm('quizzes.view_quiz'):
             return Response(status=status.HTTP_403_FORBIDDEN)
+        
+        # If using filter automatically
+        # queryset = self.filter_queryset(self.queryset)
+        # End using filter automatically
 
-        # Apply filtering
-        queryset = self.filter_queryset(self.queryset)
+        # If using filter manually
+        # Get query parameters
+        code = request.query_params.get('code', None)
+        created_at_after = request.query_params.get('created_at_after', None)
+        created_at_before = request.query_params.get('created_at_before', None)
+        
+        # Filter based on query parameters
+        queryset = self.queryset
+        if code:
+            queryset = queryset.filter(code__icontains=code)
+        if created_at_after and created_at_before:
+            queryset = queryset.filter(created_at__range=[created_at_after, created_at_before])
+        elif created_at_after:
+            queryset = queryset.filter(created_at__gte=created_at_after)
+        elif created_at_before:
+            queryset = queryset.filter(created_at__lte=created_at_before)
+        # End using filter manually
 
         # Apply pagination
         paginator = self.pagination_class()

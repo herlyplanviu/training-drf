@@ -40,7 +40,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    # 'drf_redesign',
+    'drf_redesign',
     'rest_framework',
     'django_filters',
     'users.apps.UserConfig',
