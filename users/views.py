@@ -6,7 +6,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework import status
 from users.serializers import UserProfileSerializer
 from rest_framework.authentication import BasicAuthentication, SessionAuthentication
-
+    
 # Create your views here.
 @api_view(['GET'])
 @authentication_classes([JWTAuthentication,BasicAuthentication,SessionAuthentication])

@@ -28,34 +28,41 @@ class QuestionViewSet(viewsets.ModelViewSet):
             self.permission_classes = [IsAuthenticated]
         return super().get_permissions()
 
-    def list(self, request, *args, **kwargs):
+    def list(self, request , *args, **kwargs):
         if not request.user.has_perm('questions.view_question'):
             return Response(status=status.HTTP_403_FORBIDDEN)
         
-        total = request.GET.get("total")
-        if total is None:
-            questions = Question.objects.all()
-        else:
-            total = int(total)
-            questions = Question.objects.order_by('?')[:total]
-            
-        paginator = self.pagination_class()
-        paginator.page_size = 5
-        paginated_questions = paginator.paginate_queryset(questions, request)
-
-        question_responses = []
-        for index, question in enumerate(paginated_questions, start=1):
-            answer_exists = Answer.objects.filter(question=question, user=request.user).exists()
-            if request.GET.get("choices") == "0":
-                serialized_question = QuestionOnlySerializer(question).data
+        # Coba versioning
+        version = kwargs.get('version', None)
+        
+        if version == "v1":
+            total = request.GET.get("total")
+            if total is None:
+                questions = Question.objects.all()
             else:
-                serialized_question = QuestionSerializer(question).data
-            serialized_question["is_answered"] = answer_exists
-            serialized_question["number"] = index
-            question_responses.append(serialized_question)
-            
+                total = int(total)
+                questions = Question.objects.order_by('?')[:total]
+                
+            paginator = self.pagination_class()
+            paginator.page_size = 5
+            paginated_questions = paginator.paginate_queryset(questions, request)
 
-        return paginator.get_paginated_response(question_responses)
+            question_responses = []
+            for index, question in enumerate(paginated_questions, start=1):
+                answer_exists = Answer.objects.filter(question=question, user=request.user).exists()
+                if request.GET.get("choices") == "0":
+                    serialized_question = QuestionOnlySerializer(question).data
+                else:
+                    serialized_question = QuestionSerializer(question).data
+                serialized_question["is_answered"] = answer_exists
+                serialized_question["number"] = index
+                question_responses.append(serialized_question)
+                
+
+            return paginator.get_paginated_response(question_responses)
+        
+        elif version == 'v2':
+            return Response(status=status.HTTP_501_NOT_IMPLEMENTED, data={"detail": "Not implemented yet"})
 
     def retrieve(self, request, *args, **kwargs):
         question = get_object_or_404(self.queryset, pk=kwargs['pk'])
