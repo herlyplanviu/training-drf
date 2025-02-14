@@ -34,10 +34,10 @@ router.register(r'choices', ChoiceViewSet, basename='choice')
 router.register(r'quizzes', QuizViewSet, basename='quiz')
 
 urlpatterns = [
-    re_path(r'^api/(?P<version>(v1|v2))/users/', include('users.urls')),  # You can add version handling inside `users.urls`
+    re_path(r'^api/(?P<version>(v1|v2))/', include('users.urls')),  # You can add version handling inside `users.urls`
 
     # Answers URLs versioned
-    re_path(r'^api/(?P<version>(v1|v2))/answers/', include('answers.urls')),  # You can add version handling inside `answers.urls`
+    re_path(r'^api/(?P<version>(v1|v2))/', include('answers.urls')),  # You can add version handling inside `answers.urls`
 
     # ViewSet endpoints with versioning
     re_path(r'^api/(?P<version>(v1|v2))/', include(router.urls)),

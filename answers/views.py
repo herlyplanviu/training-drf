@@ -14,7 +14,7 @@ from questions.paginations import PageNumberPagination
 @api_view(['GET', 'POST'])
 @authentication_classes([JWTAuthentication,BasicAuthentication,SessionAuthentication])
 @permission_classes([IsAuthenticated])
-def answer_list(request):
+def answer_list(request, version=None):
     if request.method == 'GET':
         if not request.user.has_perm('answers.view_answer'):
             return Response(status=403)

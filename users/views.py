@@ -11,7 +11,7 @@ from rest_framework.authentication import BasicAuthentication, SessionAuthentica
 @api_view(['GET'])
 @authentication_classes([JWTAuthentication,BasicAuthentication,SessionAuthentication])
 @permission_classes([IsAuthenticated])
-def get_user(request):
+def get_user(request, version=None):
     user = request.user  # Get the current authenticated user
 
     # Get direct user permissions
