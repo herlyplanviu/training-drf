@@ -6,8 +6,10 @@ from rest_framework.authentication import SessionAuthentication, BasicAuthentica
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
+from quizzes.filters import QuizFilter
 from quizzes.models import Quiz
 from quizzes.serializers import QuizOnlySerializer
+from django_filters import rest_framework as filters
 
 class QuizViewSet(viewsets.ModelViewSet):
     queryset = Quiz.objects.all()
@@ -15,6 +17,8 @@ class QuizViewSet(viewsets.ModelViewSet):
     authentication_classes = [JWTAuthentication, BasicAuthentication, SessionAuthentication]
     permission_classes = [IsAuthenticatedOrReadOnly]
     pagination_class = PageNumberPagination
+    filter_backends = (filters.DjangoFilterBackend,)
+    filterset_class = QuizFilter
 
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
@@ -22,15 +26,17 @@ class QuizViewSet(viewsets.ModelViewSet):
         return super().get_permissions()
 
     def list(self, request, *args, **kwargs):
-    # Check permission for viewing quizzes
+        # Check permission for viewing quizzes
         if not request.user.has_perm('quizzes.view_quiz'):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
+        # Apply filtering
+        queryset = self.filter_queryset(self.queryset)
+
         # Apply pagination
-        quizzes = self.queryset
         paginator = self.pagination_class()
         paginator.page_size = 5
-        paginated_quizzes = paginator.paginate_queryset(quizzes, request)
+        paginated_quizzes = paginator.paginate_queryset(queryset, request)
 
         # Serialize the paginated data
         serializer = self.get_serializer(paginated_quizzes, many=True)
