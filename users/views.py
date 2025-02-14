@@ -46,7 +46,7 @@ def get_user(request, version=None):
 @api_view(['PUT'])
 @authentication_classes([JWTAuthentication,BasicAuthentication,SessionAuthentication])
 @permission_classes([IsAuthenticated])
-def change_avatar(request):
+def change_avatar(request, version=None):
     user = request.user
     serializer = UserProfileSerializer(user, data=request.data, partial=True)
     if serializer.is_valid():
