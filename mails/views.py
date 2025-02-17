@@ -81,8 +81,19 @@ def get_emails(request):
     if not creds:
         return JsonResponse({"error": "Google account not linked or invalid token"}, status=400)
 
+    folder = request.GET.get('folder', 'inbox')
     # Get page token from request (if provided)
     page_token = request.GET.get('page_token', None)
+    
+    # Determine query based on folder
+    folder_queries = {
+        'inbox': 'in:inbox',
+        'sent': 'in:sent',
+        'junk': 'in:spam',
+        'trash': 'in:trash',
+        'archive': '-in:inbox -in:sent -in:spam -in:trash'
+    }
+    query = folder_queries.get(folder.lower(), 'in:inbox')  # Default to inbox
 
     # Initialize Gmail service
     service = build('gmail', 'v1', credentials=creds)
@@ -90,7 +101,8 @@ def get_emails(request):
     # Fetch messages with optional page token
     query_params = {
         'userId': 'me',
-        'maxResults': 10
+        'maxResults': 10,
+        'q': query
     }
     if page_token:
         query_params['pageToken'] = page_token
@@ -106,19 +118,17 @@ def get_emails(request):
         headers = message_detail.get('payload', {}).get('headers', [])
 
         # Extract required fields
-        subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'No Subject')
+        subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
         sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
         snippet = message_detail.get('snippet')
         thread_id = message_detail.get('threadId')
-        message_id = next((h['value'] for h in headers if h['name'] == 'Message-ID'), None)
 
         emails.append({
-            'id': msg['id'],
             'thread_id': thread_id,
-            'message_id': message_id,
+            'message_id': msg['id'],
             'subject': subject,
             'sender': sender,
-            'snippet': snippet
+            'snippet': snippet,
         })
 
     # Return paginated response
