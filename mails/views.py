@@ -95,7 +95,7 @@ def get_emails(request):
         headers = message_detail.get('payload', {}).get('headers', [])
         
         # Extract required headers
-        subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'No Subject')
+        subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
         sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
         # message_id = next((h['value'] for h in headers if h['name'] == 'Message-ID'), None)
         snippet = message_detail.get('snippet')
@@ -106,7 +106,8 @@ def get_emails(request):
             'message_id': msg['id'],
             'subject': subject,
             'sender': sender,
-            'snippet': snippet
+            'snippet': snippet,
+            # 'origin': message_detail
         })
 
     return JsonResponse(emails, safe=False)
@@ -193,18 +194,10 @@ def reply_email(request):
         # Initialize Gmail service
         service = build('gmail', 'v1', credentials=creds)
 
-        # Get original message details to extract the subject
-        original_message = service.users().messages().get(userId='me', id=message_id).execute()
-        headers = original_message.get('payload', {}).get('headers', [])
-        subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'No Subject')
-        
-        # Prefix with "Re: " to indicate a reply
-        reply_subject = f"Re: {subject}"
-
         # Construct the email reply
         message = MIMEMultipart()
         message['to'] = to
-        message['subject'] = reply_subject
+        message['subject'] = f"Re: {request.data.get('subject', '')}"
         message['In-Reply-To'] = message_id
         message['References'] = message_id
         message.attach(MIMEText(body, 'html'))
@@ -220,6 +213,76 @@ def reply_email(request):
         ).execute()
         
         return JsonResponse({'message': 'Reply sent successfully', 'message_id': send_message['id']}, status=200)
+    
+    except Exception as error:
+        return JsonResponse({'error': f'An error occurred: {error}'}, status=500)
+
+@api_view(['POST'])
+@authentication_classes([JWTAuthentication, BasicAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated])
+def forward_email(request):
+    creds = get_credentials(request.user)
+    if not creds:
+        return JsonResponse({'error': 'Google account not linked or invalid token'}, status=400)
+
+    # Get email details from request
+    message_id = request.data.get('message_id')
+    to = request.data.get('to')
+    additional_body = request.data.get('body', '')
+
+    if not all([message_id, to]):
+        return JsonResponse({'error': 'Missing email fields (message_id, to)'}, status=400)
+
+    try:
+        # Initialize Gmail service
+        service = build('gmail', 'v1', credentials=creds)
+
+        # Get original message details
+        original_message = service.users().messages().get(userId='me', id=message_id, format='full').execute()
+        headers = original_message.get('payload', {}).get('headers', [])
+        
+        # Extract details for the forward
+        # original_subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'No Subject')
+        sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
+        date = next((h['value'] for h in headers if h['name'] == 'Date'), 'Unknown Date')
+        
+        # Get the original body (supports plain text and HTML)
+        parts = original_message.get('payload', {}).get('parts', [])
+        body = ""
+        for part in parts:
+            mime_type = part.get('mimeType')
+            if mime_type == 'text/plain' or mime_type == 'text/html':
+                body_data = part['body'].get('data')
+                if body_data:
+                    body += base64.urlsafe_b64decode(body_data).decode('utf-8')
+        
+        # Construct the forwarded email content
+        forward_subject = f"Fwd: {request.data.get('subject', '')}"
+        forward_body = f"""
+            <p>{additional_body}</p>
+            <br><hr>
+            <p>---------- Forwarded message ---------</p>
+            <p>From: {sender}<br>
+            Date: {date}<br>
+            Subject: {request.data.get('subject', '')}</p>
+            <br>
+            {body}
+        """
+
+        # Construct the email to be forwarded
+        message = MIMEMultipart()
+        message['to'] = to
+        message['subject'] = forward_subject
+        message.attach(MIMEText(forward_body, 'html'))
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+
+        # Send the forwarded email
+        send_message = service.users().messages().send(
+            userId='me', 
+            body={'raw': raw_message}
+        ).execute()
+        
+        return JsonResponse({'message': 'Forwarded successfully', 'message_id': send_message['id']}, status=200)
     
     except Exception as error:
         return JsonResponse({'error': f'An error occurred: {error}'}, status=500)
