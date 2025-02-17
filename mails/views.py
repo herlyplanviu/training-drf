@@ -81,36 +81,51 @@ def get_emails(request):
     if not creds:
         return JsonResponse({"error": "Google account not linked or invalid token"}, status=400)
 
+    # Get page token from request (if provided)
+    page_token = request.GET.get('page_token', None)
+
+    # Initialize Gmail service
     service = build('gmail', 'v1', credentials=creds)
-    results = service.users().messages().list(userId='me', maxResults=10).execute()
+
+    # Fetch messages with optional page token
+    query_params = {
+        'userId': 'me',
+        'maxResults': 10
+    }
+    if page_token:
+        query_params['pageToken'] = page_token
+
+    results = service.users().messages().list(**query_params).execute()
     messages = results.get('messages', [])
-    
+    next_page_token = results.get('nextPageToken')
+
+    # Construct email list
     emails = []
     for msg in messages:
-        # Get full message details
         message_detail = service.users().messages().get(userId='me', id=msg['id']).execute()
-
-        # Extract threadId and headers
-        thread_id = message_detail.get('threadId')
         headers = message_detail.get('payload', {}).get('headers', [])
-        
-        # Extract required headers
-        subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
+
+        # Extract required fields
+        subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'No Subject')
         sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
-        # message_id = next((h['value'] for h in headers if h['name'] == 'Message-ID'), None)
         snippet = message_detail.get('snippet')
-        
+        thread_id = message_detail.get('threadId')
+        message_id = next((h['value'] for h in headers if h['name'] == 'Message-ID'), None)
+
         emails.append({
             'id': msg['id'],
             'thread_id': thread_id,
-            'message_id': msg['id'],
+            'message_id': message_id,
             'subject': subject,
             'sender': sender,
-            'snippet': snippet,
-            # 'origin': message_detail
+            'snippet': snippet
         })
 
-    return JsonResponse(emails, safe=False)
+    # Return paginated response
+    return JsonResponse({
+        'emails': emails,
+        'next_page_token': next_page_token
+    }, safe=False)
 
 
 # Get Email Details
@@ -128,6 +143,7 @@ def get_email_details(request, email_id):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
+    thread_id = msg.get('threadId')
     headers = msg.get('payload', {}).get('headers', [])
     subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
     sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
@@ -138,6 +154,8 @@ def get_email_details(request, email_id):
                    if part['mimeType'] == 'text/html')
 
     return JsonResponse({
+        'thread_id': thread_id,
+        'message_id': msg['id'],
         'subject': subject,
         'sender': sender,
         'body': body
