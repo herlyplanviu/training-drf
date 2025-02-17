@@ -83,8 +83,40 @@ def get_emails(request):
     if not creds:
         return JsonResponse({"error": "Google account not linked or invalid token"}, status=400)
 
+    # Get thread_id from request
+    thread_id = request.GET.get('thread_id', None)
+
+    # Initialize Gmail service
+    service = build('gmail', 'v1', credentials=creds)
+
+    # If thread_id is provided, get all messages in that thread
+    if thread_id:
+        try:
+            thread = service.users().threads().get(userId='me', id=thread_id).execute()
+            messages = thread.get('messages', [])
+
+            emails = []
+            for message in messages:
+                headers = message.get('payload', {}).get('headers', [])
+                subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
+                sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
+                snippet = message.get('snippet')
+                message_id = message.get('id')
+
+                emails.append({
+                    'thread_id': thread_id,
+                    'message_id': message_id,
+                    'subject': subject,
+                    'sender': sender,
+                    'snippet': snippet,
+                })
+
+            return JsonResponse({'emails': emails}, safe=False)
+        except Exception as e:
+            return JsonResponse({"error": f"Failed to get thread: {str(e)}"}, status=500)
+
+    # If no thread_id, fetch normal email list
     folder = request.GET.get('folder', 'inbox')
-    # Get page token from request (if provided)
     page_token = request.GET.get('page_token', None)
     
     # Determine query based on folder
@@ -95,10 +127,7 @@ def get_emails(request):
         'trash': 'in:trash',
         'archive': '-in:inbox -in:sent -in:spam -in:trash'
     }
-    query = folder_queries.get(folder.lower(), 'in:inbox')  # Default to inbox
-
-    # Initialize Gmail service
-    service = build('gmail', 'v1', credentials=creds)
+    query = folder_queries.get(folder.lower(), 'in:inbox')
 
     # Fetch messages with optional page token
     query_params = {
@@ -109,35 +138,37 @@ def get_emails(request):
     if page_token:
         query_params['pageToken'] = page_token
 
-    results = service.users().messages().list(**query_params).execute()
-    messages = results.get('messages', [])
-    next_page_token = results.get('nextPageToken')
+    try:
+        results = service.users().messages().list(**query_params).execute()
+        messages = results.get('messages', [])
+        next_page_token = results.get('nextPageToken')
 
-    # Construct email list
-    emails = []
-    for msg in messages:
-        message_detail = service.users().messages().get(userId='me', id=msg['id']).execute()
-        headers = message_detail.get('payload', {}).get('headers', [])
+        emails = []
+        for msg in messages:
+            message_detail = service.users().messages().get(userId='me', id=msg['id']).execute()
+            headers = message_detail.get('payload', {}).get('headers', [])
 
-        # Extract required fields
-        subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
-        sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
-        snippet = message_detail.get('snippet')
-        thread_id = message_detail.get('threadId')
+            subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
+            sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
+            snippet = message_detail.get('snippet')
+            thread_id = message_detail.get('threadId')
 
-        emails.append({
-            'thread_id': thread_id,
-            'message_id': msg['id'],
-            'subject': subject,
-            'sender': sender,
-            'snippet': snippet,
-        })
+            emails.append({
+                'thread_id': thread_id,
+                'message_id': msg['id'],
+                'subject': subject,
+                'sender': sender,
+                'snippet': snippet,
+            })
 
-    # Return paginated response
-    return JsonResponse({
-        'emails': emails,
-        'next_page_token': next_page_token
-    }, safe=False)
+        return JsonResponse({
+            'emails': emails,
+            'next_page_token': next_page_token
+        }, safe=False)
+
+    except Exception as e:
+        return JsonResponse({"error": f"Failed to get emails: {str(e)}"}, status=500)
+
 
 
 # Get Email Details
