@@ -85,14 +85,32 @@ def get_emails(request):
     results = service.users().messages().list(userId='me', maxResults=10).execute()
     messages = results.get('messages', [])
     
-    emails = [{
-        'id': msg['id'],
-        'subject': next((h['value'] for h in service.users().messages().get(userId='me', id=msg['id']).execute().get('payload', {}).get('headers', []) if h['name'] == 'Subject'), 'No Subject'),
-        'sender': next((h['value'] for h in service.users().messages().get(userId='me', id=msg['id']).execute().get('payload', {}).get('headers', []) if h['name'] == 'From'), 'Unknown Sender'),
-        'snippet': service.users().messages().get(userId='me', id=msg['id']).execute().get('snippet')
-    } for msg in messages]
+    emails = []
+    for msg in messages:
+        # Get full message details
+        message_detail = service.users().messages().get(userId='me', id=msg['id']).execute()
+
+        # Extract threadId and headers
+        thread_id = message_detail.get('threadId')
+        headers = message_detail.get('payload', {}).get('headers', [])
+        
+        # Extract required headers
+        subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'No Subject')
+        sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
+        # message_id = next((h['value'] for h in headers if h['name'] == 'Message-ID'), None)
+        snippet = message_detail.get('snippet')
+        
+        emails.append({
+            'id': msg['id'],
+            'thread_id': thread_id,
+            'message_id': msg['id'],
+            'subject': subject,
+            'sender': sender,
+            'snippet': snippet
+        })
 
     return JsonResponse(emails, safe=False)
+
 
 # Get Email Details
 @api_view(['GET'])
@@ -151,5 +169,57 @@ def send_email(request):
         service = build('gmail', 'v1', credentials=creds)
         send_message = service.users().messages().send(userId='me', body={'raw': raw_message}).execute()
         return JsonResponse({'message': 'Email sent successfully', 'message_id': send_message['id']}, status=200)
+    except Exception as error:
+        return JsonResponse({'error': f'An error occurred: {error}'}, status=500)
+
+@api_view(['POST'])
+@authentication_classes([JWTAuthentication, BasicAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated])
+def reply_email(request):
+    creds = get_credentials(request.user)
+    if not creds:
+        return JsonResponse({'error': 'Google account not linked or invalid token'}, status=400)
+
+    # Get email details from request
+    thread_id = request.data.get('thread_id')
+    message_id = request.data.get('message_id')
+    to = request.data.get('to')
+    body = request.data.get('body')
+
+    if not all([thread_id, message_id, to, body]):
+        return JsonResponse({'error': 'Missing email fields (thread_id, message_id, to, body)'}, status=400)
+
+    try:
+        # Initialize Gmail service
+        service = build('gmail', 'v1', credentials=creds)
+
+        # Get original message details to extract the subject
+        original_message = service.users().messages().get(userId='me', id=message_id).execute()
+        headers = original_message.get('payload', {}).get('headers', [])
+        subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'No Subject')
+        
+        # Prefix with "Re: " to indicate a reply
+        reply_subject = f"Re: {subject}"
+
+        # Construct the email reply
+        message = MIMEMultipart()
+        message['to'] = to
+        message['subject'] = reply_subject
+        message['In-Reply-To'] = message_id
+        message['References'] = message_id
+        message.attach(MIMEText(body, 'html'))
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+
+        # Send the reply email
+        send_message = service.users().messages().send(
+            userId='me', 
+            body={
+                'raw': raw_message,
+                'threadId': thread_id
+            }
+        ).execute()
+        
+        return JsonResponse({'message': 'Reply sent successfully', 'message_id': send_message['id']}, status=200)
+    
     except Exception as error:
         return JsonResponse({'error': f'An error occurred: {error}'}, status=500)
