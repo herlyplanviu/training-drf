@@ -129,7 +129,7 @@ def get_email_details(request, email_id):
         return JsonResponse({'error': str(e)}, status=500)
 
     headers = msg.get('payload', {}).get('headers', [])
-    subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'No Subject')
+    subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
     sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
 
     # Decode Email Body
