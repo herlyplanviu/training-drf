@@ -1,4 +1,6 @@
 import base64
+from email import encoders
+from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import json
@@ -181,17 +183,31 @@ def send_email(request):
         return JsonResponse({'error': 'Google account not linked or invalid token'}, status=400)
 
     # Get email details from request
-    to = request.data.get('to')
-    subject = request.data.get('subject')
-    body = request.data.get('body')
+    to = request.POST.get('to')
+    subject = request.POST.get('subject')
+    body = request.POST.get('body')
+    attachment = request.FILES.get('attachment')  # Get attachment from request
 
     if not all([to, subject, body]):
         return JsonResponse({'error': 'Missing email fields (to, subject, body)'}, status=400)
 
+    # Create the email message
     message = MIMEMultipart()
     message['to'] = to
     message['subject'] = subject
     message.attach(MIMEText(body, 'html'))
+
+    # Handle attachment
+    if attachment:
+        part = MIMEBase('application', 'octet-stream')
+        part.set_payload(attachment.read())
+        encoders.encode_base64(part)
+        part.add_header(
+            'Content-Disposition',
+            f'attachment; filename={attachment.name}'
+        )
+        message.attach(part)
+
     raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
 
     try:
