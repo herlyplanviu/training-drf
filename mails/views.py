@@ -16,6 +16,8 @@ from rest_framework.authentication import BasicAuthentication, SessionAuthentica
 from users.models import GoogleAuth
 from rest_framework.decorators import permission_classes, authentication_classes
 
+from users.serializers import GoogleAuthSerializer
+
 SCOPES = [
     'https://www.googleapis.com/auth/gmail.readonly',
     'https://www.googleapis.com/auth/gmail.send'
@@ -28,7 +30,8 @@ def gmail_login(request):
 def get_credentials(user):
     try:
         google_auth = GoogleAuth.objects.get(user=user)
-        creds_data = json.loads(google_auth.token)
+        # creds_data = json.loads(google_auth.token)
+        creds_data = GoogleAuthSerializer(google_auth).data
         return Credentials.from_authorized_user_info(creds_data, scopes=SCOPES)
     except (GoogleAuth.DoesNotExist, json.JSONDecodeError):
         return None
@@ -59,7 +62,12 @@ def gmail_callback(request):
 
     # Save credentials to database
     google_auth, _ = GoogleAuth.objects.get_or_create(user=request.user)
-    google_auth.token = credentials.to_json()
+    google_auth.token = credentials.token
+    google_auth.refresh_token = credentials.refresh_token
+    google_auth.token_uri = credentials.token_uri
+    google_auth.client_id = credentials.client_id
+    google_auth.client_secret = credentials.client_secret
+    google_auth.scopes = ','.join(credentials.scopes)
     google_auth.save()
 
     return redirect('/emails/')
