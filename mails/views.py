@@ -197,7 +197,8 @@ def reply_email(request):
         # Construct the email reply
         message = MIMEMultipart()
         message['to'] = to
-        message['subject'] = f"Re: {request.data.get('subject', '')}"
+        # message['subject'] = f"Re: {request.data.get('subject', '')}"
+        message['subject'] = f"{request.data.get('subject', '')}"
         message['In-Reply-To'] = message_id
         message['References'] = message_id
         message.attach(MIMEText(body, 'html'))
@@ -257,7 +258,8 @@ def forward_email(request):
                     body += base64.urlsafe_b64decode(body_data).decode('utf-8')
         
         # Construct the forwarded email content
-        forward_subject = f"Fwd: {request.data.get('subject', '')}"
+        # forward_subject = f"Fwd: {request.data.get('subject', '')}"
+        forward_subject = f"{request.data.get('subject', '')}"
         forward_body = f"""
             <p>{additional_body}</p>
             <br><hr>
