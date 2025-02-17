@@ -83,37 +83,8 @@ def get_emails(request):
     if not creds:
         return JsonResponse({"error": "Google account not linked or invalid token"}, status=400)
 
-    # Get thread_id from request
-    thread_id = request.GET.get('thread_id', None)
-
     # Initialize Gmail service
     service = build('gmail', 'v1', credentials=creds)
-
-    # If thread_id is provided, get all messages in that thread
-    if thread_id:
-        try:
-            thread = service.users().threads().get(userId='me', id=thread_id).execute()
-            messages = thread.get('messages', [])
-
-            emails = []
-            for message in messages:
-                headers = message.get('payload', {}).get('headers', [])
-                subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
-                sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
-                snippet = message.get('snippet')
-                message_id = message.get('id')
-
-                emails.append({
-                    'thread_id': thread_id,
-                    'message_id': message_id,
-                    'subject': subject,
-                    'sender': sender,
-                    'snippet': snippet,
-                })
-
-            return JsonResponse({'emails': emails}, safe=False)
-        except Exception as e:
-            return JsonResponse({"error": f"Failed to get thread: {str(e)}"}, status=500)
 
     # If no thread_id, fetch normal email list
     folder = request.GET.get('folder', 'inbox')
@@ -169,7 +140,48 @@ def get_emails(request):
     except Exception as e:
         return JsonResponse({"error": f"Failed to get emails: {str(e)}"}, status=500)
 
+# Get Replies
+@api_view(['GET'])
+@authentication_classes([JWTAuthentication, BasicAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated])
+def get_replies(request, thread_id):
+    creds = get_credentials(request.user)
+    if not creds:
+        return JsonResponse({"error": "Google account not linked or invalid token"}, status=400)
 
+    # Initialize Gmail service
+    service = build('gmail', 'v1', credentials=creds)
+
+    # If thread_id is provided, get all messages in that thread
+    if thread_id:
+        try:
+            thread = service.users().threads().get(userId='me', id=thread_id).execute()
+            messages = thread.get('messages', [])
+
+            emails = []
+            for message in messages:
+                headers = message.get('payload', {}).get('headers', [])
+                subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
+                sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
+                snippet = message.get('snippet')
+                message_id = message.get('id')
+                
+                body = ''.join(base64.urlsafe_b64decode(part['body']['data']).decode('utf-8') 
+                   for part in message['payload'].get('parts', []) 
+                   if part['mimeType'] == 'text/html')
+
+                emails.append({
+                    'thread_id': thread_id,
+                    'message_id': message_id,
+                    'subject': subject,
+                    'sender': sender,
+                    'snippet': snippet,
+                    'body': body,
+                })
+
+            return JsonResponse(emails, safe=False)
+        except Exception as e:
+            return JsonResponse({"error": f"Failed to get thread: {str(e)}"}, status=500)
 
 # Get Email Details
 @api_view(['GET'])
