@@ -27,7 +27,7 @@ SECRET_KEY = 'django-insecure-wzmq1sd@lq!t51qjxt)-@^mj#a@2qk4-na&l%(+cvv73is&owo
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['a809-180-248-24-62.ngrok-free.app', '127.0.0.1', 'localhost']
 
 
 # Application definition
@@ -40,12 +40,14 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'drf_redesign',
+    # 'drf_redesign',
     'rest_framework',
     'django_filters',
     'users.apps.UserConfig',
     'answers.apps.AnswersConfig',
-    'quizzes.apps.QuizzesConfig'
+    'quizzes.apps.QuizzesConfig',
+    'mails.apps.MailsConfig',
+    'face_recognitions.apps.FaceRecognitionsConfig'
 ]
 
 MIDDLEWARE = [
@@ -157,3 +159,6 @@ SIMPLE_JWT = {
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# settings.py
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

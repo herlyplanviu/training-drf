@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Gmail Inbox</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+      }
+      .email-item {
+        border-bottom: 1px solid #ccc;
+        padding: 10px;
+        cursor: pointer;
+      }
+      .email-item h3 {
+        margin: 0;
+      }
+      .email-item p {
+        color: gray;
+      }
+      .email-details {
+        border: 1px solid #ccc;
+        padding: 10px;
+        margin-top: 20px;
+        display: none;
+      }
+    </style>
+    <script>
+      function showEmailDetails(emailId) {
+        fetch(`/emails/${emailId}/`)
+          .then((response) => response.json())
+          .then((data) => {
+            const detailsDiv = document.getElementById("email-details");
+            detailsDiv.innerHTML = `
+                        <h2>${data.subject}</h2>
+                        <p><strong>From:</strong> ${data.sender}</p>
+                        <hr>
+                        <div>${data.body}</div>
+                    `;
+            detailsDiv.style.display = "block";
+            window.scrollTo(0, 0);
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+          });
+      }
+    </script>
+  </head>
+  <body>
+    <h1>Gmail Inbox</h1>
+    <div>
+      {% for email in emails %}
+      <div class="email-item" onclick="showEmailDetails('{{ email.id }}')">
+        <h3>{{ email.subject }}</h3>
+        <p>From: {{ email.sender }}</p>
+        <p>{{ email.snippet }}</p>
+      </div>
+      {% endfor %}
+    </div>
+    <div id="email-details" class="email-details"></div>
+  </body>
+</html>

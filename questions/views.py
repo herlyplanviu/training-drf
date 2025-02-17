@@ -57,8 +57,7 @@ class QuestionViewSet(viewsets.ModelViewSet):
                 serialized_question["is_answered"] = answer_exists
                 serialized_question["number"] = index
                 question_responses.append(serialized_question)
-                
-
+            
             return paginator.get_paginated_response(question_responses)
         
         elif version == 'v2':

@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from quizzes.models import Quiz
 from quizzes.serializers import QuizOnlySerializer
 from .models import Question, Choice
 
@@ -15,7 +16,8 @@ class ChoiceSerializer(serializers.ModelSerializer):
 # Question Serializer (including ChoiceSerializer)
 class QuestionSerializer(serializers.ModelSerializer):
     choices = ChoiceSerializer(many=True, read_only=True)  # Include related choices
-    quiz = QuizOnlySerializer(many=False, read_only=True)
+    # quiz = QuizOnlySerializer(many=False, read_only=True)
+    quiz = serializers.PrimaryKeyRelatedField(queryset=Quiz.objects.all())
 
     class Meta:
         model = Question
