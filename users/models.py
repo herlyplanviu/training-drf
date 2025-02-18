@@ -16,6 +16,7 @@ class GoogleAuth(models.Model):
     client_id = models.CharField(max_length=255)
     client_secret = models.CharField(max_length=255)
     scopes = models.TextField()
+    expiry = models.DateTimeField(null=True,blank=True)
 
     def __str__(self):
         return f"{self.user.username}'s Google Auth"

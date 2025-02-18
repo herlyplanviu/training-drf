@@ -10,4 +10,4 @@ class UserProfileSerializer(serializers.ModelSerializer):
 class GoogleAuthSerializer(serializers.ModelSerializer):
     class Meta:
         model = GoogleAuth
-        fields = ['token', 'refresh_token', 'token_uri', 'client_id', 'client_secret', 'scopes']
+        fields = ['token', 'refresh_token', 'client_id', 'client_secret', 'scopes', 'expiry']

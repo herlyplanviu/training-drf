@@ -1,4 +1,5 @@
 import base64
+import datetime
 from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
@@ -17,8 +18,10 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.authentication import BasicAuthentication, SessionAuthentication
 from users.models import GoogleAuth
 from rest_framework.decorators import permission_classes, authentication_classes
-
+from users.models import User
+from google.auth.transport.requests import Request
 from users.serializers import GoogleAuthSerializer
+from django.utils import timezone
 
 SCOPES = [
     'https://www.googleapis.com/auth/gmail.readonly',
@@ -32,9 +35,36 @@ def gmail_login(request):
 def get_credentials(user):
     try:
         google_auth = GoogleAuth.objects.get(user=user)
-        # creds_data = json.loads(google_auth.token)
         creds_data = GoogleAuthSerializer(google_auth).data
-        return Credentials.from_authorized_user_info(creds_data, scopes=SCOPES)
+        # creds = Credentials.from_authorized_user_info(creds_data, scopes=SCOPES)
+        
+        # Manually add the expiry field if it's not there
+        if not 'expiry' in creds_data or creds_data['expiry'] is None:
+            # Set expiry to 1 hour from now as an example
+            expiry_time = creds_data['expiry'] + datetime.timedelta(hours=1)
+            creds_data['expiry'] = expiry_time.isoformat()
+
+        creds = Credentials.from_authorized_user_info(creds_data, scopes=SCOPES)
+
+        print("Expired:", creds.expired)
+        
+        # Check if the credentials are expired and refresh them
+        if creds and creds.expired and creds.refresh_token:
+            print('refreshing token')
+            creds.refresh(Request())
+
+            # Save the refreshed token back to your model
+            google_auth.token = creds.token
+            if creds.refresh_token:
+                google_auth.refresh_token = creds.refresh_token
+            google_auth.token_uri = creds.token_uri
+            google_auth.client_id = creds.client_id
+            google_auth.client_secret = creds.client_secret
+            google_auth.scopes = ','.join(creds.scopes)
+            google_auth.expiry = timezone.make_aware(creds.expiry)
+            google_auth.save()
+
+        return creds
     except (GoogleAuth.DoesNotExist, json.JSONDecodeError):
         return None
 
@@ -47,12 +77,14 @@ def start_gmail_auth(request):
     )
     authorization_url, state = flow.authorization_url(access_type='offline', include_granted_scopes='true')
     request.session['state'] = state
+    request.session['user'] = request.GET.get('user')
     return redirect(authorization_url)
 
 # Gmail Callback
 @api_view(['GET'])
 def gmail_callback(request):
     state = request.session.get('state')
+    user = request.session.get('user')
     flow = Flow.from_client_secrets_file(
         os.path.join(settings.BASE_DIR, 'credentials.json'),
         scopes=SCOPES,
@@ -63,16 +95,19 @@ def gmail_callback(request):
     credentials = flow.credentials
 
     # Save credentials to database
-    google_auth, _ = GoogleAuth.objects.get_or_create(user=request.user)
+    google_auth, _ = GoogleAuth.objects.get_or_create(user=User.objects.filter(id=user).first())
+    
     google_auth.token = credentials.token
-    google_auth.refresh_token = credentials.refresh_token
+    if credentials.refresh_token:
+        google_auth.refresh_token = credentials.refresh_token
     google_auth.token_uri = credentials.token_uri
     google_auth.client_id = credentials.client_id
     google_auth.client_secret = credentials.client_secret
     google_auth.scopes = ','.join(credentials.scopes)
+    google_auth.expiry = timezone.make_aware(credentials.expiry)
     google_auth.save()
 
-    return redirect('/emails/')
+    return redirect('/email/emails/')
 
 # Get Emails
 @api_view(['GET'])
@@ -80,6 +115,7 @@ def gmail_callback(request):
 @permission_classes([IsAuthenticated])
 def get_emails(request):
     creds = get_credentials(request.user)
+    
     if not creds:
         return JsonResponse({"error": "Google account not linked or invalid token"}, status=400)
 
@@ -123,6 +159,7 @@ def get_emails(request):
             sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
             snippet = message_detail.get('snippet')
             thread_id = message_detail.get('threadId')
+            is_read = 'UNREAD' not in message_detail.get('labelIds', [])
 
             emails.append({
                 'thread_id': thread_id,
@@ -130,6 +167,7 @@ def get_emails(request):
                 'subject': subject,
                 'sender': sender,
                 'snippet': snippet,
+                'is_read': is_read,
             })
 
         return JsonResponse({
@@ -269,10 +307,11 @@ def reply_email(request):
         return JsonResponse({'error': 'Google account not linked or invalid token'}, status=400)
 
     # Get email details from request
-    thread_id = request.data.get('thread_id')
-    message_id = request.data.get('message_id')
-    to = request.data.get('to')
-    body = request.data.get('body')
+    thread_id = request.POST.get('thread_id')
+    message_id = request.POST.get('message_id')
+    to = request.POST.get('to')
+    body = request.POST.get('body')
+    attachment = request.FILES.get('attachment')
 
     if not all([thread_id, message_id, to, body]):
         return JsonResponse({'error': 'Missing email fields (thread_id, message_id, to, body)'}, status=400)
@@ -285,10 +324,21 @@ def reply_email(request):
         message = MIMEMultipart()
         message['to'] = to
         # message['subject'] = f"Re: {request.data.get('subject', '')}"
-        message['subject'] = f"{request.data.get('subject', '')}"
+        message['subject'] = f"{request.POST.get('subject', '')}"
         message['In-Reply-To'] = message_id
         message['References'] = message_id
         message.attach(MIMEText(body, 'html'))
+        
+        if attachment:
+            part = MIMEBase('application', 'octet-stream')
+            part.set_payload(attachment.read())
+            encoders.encode_base64(part)
+            part.add_header(
+                'Content-Disposition',
+                f'attachment; filename={attachment.name}'
+            )
+            message.attach(part)
+            
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
 
         # Send the reply email
@@ -314,9 +364,10 @@ def forward_email(request):
         return JsonResponse({'error': 'Google account not linked or invalid token'}, status=400)
 
     # Get email details from request
-    message_id = request.data.get('message_id')
-    to = request.data.get('to')
-    additional_body = request.data.get('body', '')
+    message_id = request.POST.get('message_id')
+    to = request.POST.get('to')
+    additional_body = request.POST.get('body', '')
+    attachment = request.FILES.get('attachment')
 
     if not all([message_id, to]):
         return JsonResponse({'error': 'Missing email fields (message_id, to)'}, status=400)
@@ -330,7 +381,7 @@ def forward_email(request):
         headers = original_message.get('payload', {}).get('headers', [])
         
         # Extract details for the forward
-        # original_subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'No Subject')
+        original_subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
         sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
         date = next((h['value'] for h in headers if h['name'] == 'Date'), 'Unknown Date')
         
@@ -346,14 +397,14 @@ def forward_email(request):
         
         # Construct the forwarded email content
         # forward_subject = f"Fwd: {request.data.get('subject', '')}"
-        forward_subject = f"{request.data.get('subject', '')}"
+        forward_subject = f"{request.POST.get('subject', '')}"
         forward_body = f"""
             <p>{additional_body}</p>
             <br><hr>
             <p>---------- Forwarded message ---------</p>
             <p>From: {sender}<br>
             Date: {date}<br>
-            Subject: {request.data.get('subject', '')}</p>
+            Subject: {original_subject}</p>
             <br>
             {body}
         """
@@ -363,6 +414,17 @@ def forward_email(request):
         message['to'] = to
         message['subject'] = forward_subject
         message.attach(MIMEText(forward_body, 'html'))
+        
+        if attachment:
+            part = MIMEBase('application', 'octet-stream')
+            part.set_payload(attachment.read())
+            encoders.encode_base64(part)
+            part.add_header(
+                'Content-Disposition',
+                f'attachment; filename={attachment.name}'
+            )
+            message.attach(part)
+            
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
 
         # Send the forwarded email
