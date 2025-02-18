@@ -6,6 +6,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import json
 import os
+import re
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -23,52 +24,37 @@ from google.auth.transport.requests import Request
 from users.serializers import GoogleAuthSerializer
 from django.utils import timezone
 
-SCOPES = [
-    'https://www.googleapis.com/auth/gmail.readonly',
-    'https://www.googleapis.com/auth/gmail.send'
-]
+SCOPES = ['https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/gmail.send']
 
-def gmail_login(request):
-    return render(request, 'gmail_login.html')
-
-# Helper function to get credentials from DB
+# Helper function to extract credentials and handle expiry
 def get_credentials(user):
     try:
         google_auth = GoogleAuth.objects.get(user=user)
         creds_data = GoogleAuthSerializer(google_auth).data
-        # creds = Credentials.from_authorized_user_info(creds_data, scopes=SCOPES)
-        
-        # Manually add the expiry field if it's not there
-        if not 'expiry' in creds_data or creds_data['expiry'] is None:
-            # Set expiry to 1 hour from now as an example
-            expiry_time = creds_data['expiry'] + datetime.timedelta(hours=1)
+        if not creds_data.get('expiry'):
+            expiry_time = datetime.datetime.now() + datetime.timedelta(hours=1)
             creds_data['expiry'] = expiry_time.isoformat()
-
         creds = Credentials.from_authorized_user_info(creds_data, scopes=SCOPES)
-
-        print("Expired:", creds.expired)
         
-        # Check if the credentials are expired and refresh them
         if creds and creds.expired and creds.refresh_token:
-            print('refreshing token')
             creds.refresh(Request())
-
-            # Save the refreshed token back to your model
             google_auth.token = creds.token
-            if creds.refresh_token:
-                google_auth.refresh_token = creds.refresh_token
+            google_auth.refresh_token = creds.refresh_token
             google_auth.token_uri = creds.token_uri
             google_auth.client_id = creds.client_id
             google_auth.client_secret = creds.client_secret
             google_auth.scopes = ','.join(creds.scopes)
             google_auth.expiry = timezone.make_aware(creds.expiry)
             google_auth.save()
-
+        
         return creds
     except (GoogleAuth.DoesNotExist, json.JSONDecodeError):
         return None
 
-# Gmail Login and Auth Flow
+def gmail_login(request):
+    return render(request, 'gmail_login.html')
+
+# Gmail Authentication Flow
 def start_gmail_auth(request):
     flow = Flow.from_client_secrets_file(
         os.path.join(settings.BASE_DIR, 'credentials.json'),
@@ -80,7 +66,6 @@ def start_gmail_auth(request):
     request.session['user'] = request.GET.get('user')
     return redirect(authorization_url)
 
-# Gmail Callback
 @api_view(['GET'])
 def gmail_callback(request):
     state = request.session.get('state')
@@ -94,12 +79,9 @@ def gmail_callback(request):
     flow.fetch_token(authorization_response=request.build_absolute_uri())
     credentials = flow.credentials
 
-    # Save credentials to database
     google_auth, _ = GoogleAuth.objects.get_or_create(user=User.objects.filter(id=user).first())
-    
     google_auth.token = credentials.token
-    if credentials.refresh_token:
-        google_auth.refresh_token = credentials.refresh_token
+    google_auth.refresh_token = credentials.refresh_token
     google_auth.token_uri = credentials.token_uri
     google_auth.client_id = credentials.client_id
     google_auth.client_secret = credentials.client_secret
@@ -109,24 +91,28 @@ def gmail_callback(request):
 
     return redirect('/email/emails/')
 
-# Get Emails
+# Utility function to parse email headers
+def parse_sender(sender):
+    match = re.match(r'([^<]+)\s*<([^>]+)>', sender)
+    if match:
+        name, email = match.groups()
+    else:
+        name = email = sender.strip()
+    return {'name': name, 'email': email}
+
+# Function to fetch emails
 @api_view(['GET'])
 @authentication_classes([JWTAuthentication, BasicAuthentication, SessionAuthentication])
 @permission_classes([IsAuthenticated])
 def get_emails(request):
     creds = get_credentials(request.user)
-    
     if not creds:
         return JsonResponse({"error": "Google account not linked or invalid token"}, status=400)
 
-    # Initialize Gmail service
     service = build('gmail', 'v1', credentials=creds)
-
-    # If no thread_id, fetch normal email list
     folder = request.GET.get('folder', 'inbox')
     page_token = request.GET.get('page_token', None)
     
-    # Determine query based on folder
     folder_queries = {
         'inbox': 'in:inbox',
         'sent': 'in:sent',
@@ -136,12 +122,7 @@ def get_emails(request):
     }
     query = folder_queries.get(folder.lower(), 'in:inbox')
 
-    # Fetch messages with optional page token
-    query_params = {
-        'userId': 'me',
-        'maxResults': 10,
-        'q': query
-    }
+    query_params = {'userId': 'me', 'maxResults': 10, 'q': query}
     if page_token:
         query_params['pageToken'] = page_token
 
@@ -154,31 +135,26 @@ def get_emails(request):
         for msg in messages:
             message_detail = service.users().messages().get(userId='me', id=msg['id']).execute()
             headers = message_detail.get('payload', {}).get('headers', [])
-
             subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
             sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
+            is_read = 'UNREAD' not in message_detail.get('labelIds', [])
             snippet = message_detail.get('snippet')
             thread_id = message_detail.get('threadId')
-            is_read = 'UNREAD' not in message_detail.get('labelIds', [])
-
+            
             emails.append({
                 'thread_id': thread_id,
                 'message_id': msg['id'],
                 'subject': subject,
-                'sender': sender,
+                'sender': parse_sender(sender),
                 'snippet': snippet,
                 'is_read': is_read,
             })
 
-        return JsonResponse({
-            'emails': emails,
-            'next_page_token': next_page_token
-        }, safe=False)
-
+        return JsonResponse({'emails': emails, 'next_page_token': next_page_token}, safe=False)
     except Exception as e:
         return JsonResponse({"error": f"Failed to get emails: {str(e)}"}, status=500)
 
-# Get Replies
+# Function to fetch replies
 @api_view(['GET'])
 @authentication_classes([JWTAuthentication, BasicAuthentication, SessionAuthentication])
 @permission_classes([IsAuthenticated])
@@ -187,41 +163,28 @@ def get_replies(request, thread_id):
     if not creds:
         return JsonResponse({"error": "Google account not linked or invalid token"}, status=400)
 
-    # Initialize Gmail service
     service = build('gmail', 'v1', credentials=creds)
 
-    # If thread_id is provided, get all messages in that thread
     if thread_id:
         try:
             thread = service.users().threads().get(userId='me', id=thread_id).execute()
-            messages = thread.get('messages', [])
-
-            emails = []
-            for message in messages:
-                headers = message.get('payload', {}).get('headers', [])
-                subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
-                sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
-                snippet = message.get('snippet')
-                message_id = message.get('id')
-                
-                body = ''.join(base64.urlsafe_b64decode(part['body']['data']).decode('utf-8') 
-                   for part in message['payload'].get('parts', []) 
-                   if part['mimeType'] == 'text/html')
-
-                emails.append({
+            emails = [
+                {
                     'thread_id': thread_id,
-                    'message_id': message_id,
-                    'subject': subject,
-                    'sender': sender,
-                    'snippet': snippet,
-                    'body': body,
-                })
-
+                    'message_id': message.get('id'),
+                    'subject': next((h['value'] for h in message['payload'].get('headers', []) if h['name'].lower() == 'subject'), 'No Subject'),
+                    'sender': parse_sender(next((h['value'] for h in message['payload'].get('headers', []) if h['name'] == 'From'), 'Unknown Sender')),
+                    'snippet': message.get('snippet'),
+                    'body': ''.join(base64.urlsafe_b64decode(part['body']['data']).decode('utf-8') 
+                                    for part in message['payload'].get('parts', []) if part['mimeType'] == 'text/html'),
+                }
+                for message in thread.get('messages', [])
+            ]
             return JsonResponse(emails, safe=False)
         except Exception as e:
             return JsonResponse({"error": f"Failed to get thread: {str(e)}"}, status=500)
 
-# Get Email Details
+# Function to get email details
 @api_view(['GET'])
 @authentication_classes([JWTAuthentication, BasicAuthentication, SessionAuthentication])
 @permission_classes([IsAuthenticated])
@@ -233,27 +196,48 @@ def get_email_details(request, email_id):
     service = build('gmail', 'v1', credentials=creds)
     try:
         msg = service.users().messages().get(userId='me', id=email_id, format='full').execute()
+        headers = msg.get('payload', {}).get('headers', [])
+        subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
+        sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
+        body = ''.join(base64.urlsafe_b64decode(part['body']['data']).decode('utf-8') 
+                       for part in msg['payload'].get('parts', []) if part['mimeType'] == 'text/html')
+        
+        return JsonResponse({
+            'thread_id': msg.get('threadId'),
+            'message_id': msg['id'],
+            'subject': subject,
+            'sender': parse_sender(sender),
+            'body': body,
+        })
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
-    thread_id = msg.get('threadId')
-    headers = msg.get('payload', {}).get('headers', [])
-    subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
-    sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
+def create_email_message(to, subject, body, attachment=None, in_reply_to=None, references=None):
+    """Helper function to construct the email message."""
+    message = MIMEMultipart()
+    message['to'] = to
+    message['subject'] = subject
+    if in_reply_to:
+        message['In-Reply-To'] = in_reply_to
+    if references:
+        message['References'] = references
+    message.attach(MIMEText(body, 'html'))
 
-    # Decode Email Body
-    body = ''.join(base64.urlsafe_b64decode(part['body']['data']).decode('utf-8') 
-                   for part in msg['payload'].get('parts', []) 
-                   if part['mimeType'] == 'text/html')
+    if attachment:
+        part = MIMEBase('application', 'octet-stream')
+        part.set_payload(attachment.read())
+        encoders.encode_base64(part)
+        part.add_header('Content-Disposition', f'attachment; filename={attachment.name}')
+        message.attach(part)
 
-    return JsonResponse({
-        'thread_id': thread_id,
-        'message_id': msg['id'],
-        'subject': subject,
-        'sender': sender,
-        'body': body,
-        'origin': msg
-    })
+    return message
+def send_raw_message(service, message, thread_id=None):
+    """Helper function to send a raw email message with optional thread_id."""
+    raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+    body = {'raw': raw_message}
+    if thread_id:
+        body['threadId'] = thread_id  # Include thread_id for replies
+    return service.users().messages().send(userId='me', body=body).execute()
 
 # Send Email
 @api_view(['POST'])
@@ -264,38 +248,20 @@ def send_email(request):
     if not creds:
         return JsonResponse({'error': 'Google account not linked or invalid token'}, status=400)
 
-    # Get email details from request
     to = request.POST.get('to')
     subject = request.POST.get('subject')
     body = request.POST.get('body')
-    attachment = request.FILES.get('attachment')  # Get attachment from request
+    attachment = request.FILES.get('attachment')
 
     if not all([to, subject, body]):
         return JsonResponse({'error': 'Missing email fields (to, subject, body)'}, status=400)
 
-    # Create the email message
-    message = MIMEMultipart()
-    message['to'] = to
-    message['subject'] = subject
-    message.attach(MIMEText(body, 'html'))
-
-    # Handle attachment
-    if attachment:
-        part = MIMEBase('application', 'octet-stream')
-        part.set_payload(attachment.read())
-        encoders.encode_base64(part)
-        part.add_header(
-            'Content-Disposition',
-            f'attachment; filename={attachment.name}'
-        )
-        message.attach(part)
-
-    raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
-
     try:
         service = build('gmail', 'v1', credentials=creds)
-        send_message = service.users().messages().send(userId='me', body={'raw': raw_message}).execute()
+        message = create_email_message(to, subject, body, attachment)
+        send_message = send_raw_message(service, message)
         return JsonResponse({'message': 'Email sent successfully', 'message_id': send_message['id']}, status=200)
+
     except Exception as error:
         return JsonResponse({'error': f'An error occurred: {error}'}, status=500)
 
@@ -307,7 +273,6 @@ def reply_email(request):
     if not creds:
         return JsonResponse({'error': 'Google account not linked or invalid token'}, status=400)
 
-    # Get email details from request
     thread_id = request.POST.get('thread_id')
     message_id = request.POST.get('message_id')
     to = request.POST.get('to')
@@ -318,41 +283,11 @@ def reply_email(request):
         return JsonResponse({'error': 'Missing email fields (thread_id, message_id, to, body)'}, status=400)
 
     try:
-        # Initialize Gmail service
         service = build('gmail', 'v1', credentials=creds)
-
-        # Construct the email reply
-        message = MIMEMultipart()
-        message['to'] = to
-        # message['subject'] = f"Re: {request.data.get('subject', '')}"
-        message['subject'] = f"{request.POST.get('subject', '')}"
-        message['In-Reply-To'] = message_id
-        message['References'] = message_id
-        message.attach(MIMEText(body, 'html'))
-        
-        if attachment:
-            part = MIMEBase('application', 'octet-stream')
-            part.set_payload(attachment.read())
-            encoders.encode_base64(part)
-            part.add_header(
-                'Content-Disposition',
-                f'attachment; filename={attachment.name}'
-            )
-            message.attach(part)
-            
-        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
-
-        # Send the reply email
-        send_message = service.users().messages().send(
-            userId='me', 
-            body={
-                'raw': raw_message,
-                'threadId': thread_id
-            }
-        ).execute()
-        
+        message = create_email_message(to, f"{request.POST.get('subject', '')}", body, attachment, message_id, message_id)
+        send_message = send_raw_message(service, message, thread_id)
         return JsonResponse({'message': 'Reply sent successfully', 'message_id': send_message['id']}, status=200)
-    
+
     except Exception as error:
         return JsonResponse({'error': f'An error occurred: {error}'}, status=500)
 
