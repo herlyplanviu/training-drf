@@ -23,6 +23,8 @@ from users.models import User
 from google.auth.transport.requests import Request
 from users.serializers import GoogleAuthSerializer
 from django.utils import timezone
+from google.auth.exceptions import GoogleAuthError
+
 
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/gmail.send']
 
@@ -65,6 +67,32 @@ def start_gmail_auth(request):
     request.session['state'] = state
     request.session['user'] = request.GET.get('user')
     return redirect(authorization_url)
+
+@api_view(['POST'])
+def revoke_account(request):
+    user = request.user
+
+    try:
+        google_auth = GoogleAuth.objects.get(user=user)
+
+        # Revoking the token
+        credentials = google_auth.credentials  # You should have stored the `google_auth.credentials` or have a way to retrieve it.
+        
+        # Make sure the credentials are valid (not expired)
+        if credentials and credentials.valid:
+            credentials.revoke(Request())
+
+            # Delete the GoogleAuth data from the database
+            google_auth.delete()
+
+            return JsonResponse({'message': 'Google account successfully unlinked and token revoked'}, status=200)
+        else:
+            return JsonResponse({'error': 'No valid Google credentials found to revoke'}, status=400)
+
+    except GoogleAuth.DoesNotExist:
+        return JsonResponse({'error': 'Google account not linked'}, status=400)
+    except GoogleAuthError as error:
+        return JsonResponse({'error': f'An error occurred during revocation: {error}'}, status=500)
 
 @api_view(['GET'])
 def gmail_callback(request):
