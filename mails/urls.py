@@ -4,7 +4,7 @@ from .views import forward_email, get_replies, gmail_login, gmail_callback, get_
 urlpatterns = [
     path('gmail/login/', gmail_login, name='gmail_login'),
     # AUTH
-    path('gmail/start-auth/', start_gmail_auth, name='start_gmail_auth'),
+    path('gmail/link/', start_gmail_auth, name='link_account'),
     path('gmail/revoke/', revoke_account, name='revoke_account'),
     # CALLBACK
     path('gmail/callback/', gmail_callback, name='gmail_callback'),
