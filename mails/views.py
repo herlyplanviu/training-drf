@@ -13,6 +13,7 @@ from googleapiclient.discovery import build
 from django.conf import settings
 from django.shortcuts import redirect, render
 from django.http import JsonResponse
+import requests
 from rest_framework.decorators import api_view
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.authentication import JWTAuthentication
@@ -71,28 +72,29 @@ def start_gmail_auth(request):
 @api_view(['POST'])
 def revoke_account(request):
     user = request.user
-
+    
     try:
+        # Retrieve GoogleAuth record for the user
         google_auth = GoogleAuth.objects.get(user=user)
+        creds = get_credentials(request.user)
 
-        # Revoking the token
-        credentials = google_auth.credentials  # You should have stored the `google_auth.credentials` or have a way to retrieve it.
+        # Revoke the token using Google's endpoint
+        revoke_url = 'https://oauth2.googleapis.com/revoke'
+        params = {'token': creds.token}
+        response = requests.post(revoke_url, params=params)
         
-        # Make sure the credentials are valid (not expired)
-        if credentials and credentials.valid:
-            credentials.revoke(Request())
-
-            # Delete the GoogleAuth data from the database
+        # If the revocation is successful
+        if response.status_code == 200:
             google_auth.delete()
 
+            # Return a success message
             return JsonResponse({'message': 'Google account successfully unlinked and token revoked'}, status=200)
         else:
-            return JsonResponse({'error': 'No valid Google credentials found to revoke'}, status=400)
+            return JsonResponse({'error': 'Failed to revoke Google token'}, status=400)
 
     except GoogleAuth.DoesNotExist:
+        # If no GoogleAuth record is found for the user
         return JsonResponse({'error': 'Google account not linked'}, status=400)
-    except GoogleAuthError as error:
-        return JsonResponse({'error': f'An error occurred during revocation: {error}'}, status=500)
 
 @api_view(['GET'])
 def gmail_callback(request):
