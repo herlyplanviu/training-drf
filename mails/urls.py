@@ -1,11 +1,12 @@
 from django.urls import path
-from .views import forward_email, get_replies, gmail_login, gmail_callback, get_emails, get_email_details, reply_email, revoke_account, send_email, start_gmail_auth
+from .views import check_linked_account, forward_email, get_replies, gmail_login, gmail_callback, get_emails, get_email_details, reply_email, revoke_account, send_email, start_gmail_auth
 
 urlpatterns = [
     path('gmail/login/', gmail_login, name='gmail_login'),
     # AUTH
     path('gmail/link/', start_gmail_auth, name='link_account'),
     path('gmail/revoke/', revoke_account, name='revoke_account'),
+    path('gmail/check/', check_linked_account, name="check_linked_account"),
     # CALLBACK
     path('gmail/callback/', gmail_callback, name='gmail_callback'),
     # MAIN FUNCTION

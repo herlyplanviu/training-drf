@@ -12,7 +12,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from django.conf import settings
 from django.shortcuts import redirect, render
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 import requests
 from rest_framework.decorators import api_view
 from rest_framework.permissions import IsAuthenticated
@@ -96,10 +96,47 @@ def revoke_account(request):
         # If no GoogleAuth record is found for the user
         return JsonResponse({'error': 'Google account not linked'}, status=400)
 
+@api_view(["GET"])
+def check_linked_account(request):
+    try:
+        # Check if a Google account is linked to the user
+        google_auth = GoogleAuth.objects.get(user=request.user)
+
+        # Get credentials for the user
+        creds = get_credentials(request.user)
+        
+        if creds:
+            # Initialize Gmail service
+            service = build('gmail', 'v1', credentials=creds)
+
+            # Get user profile (email and name)
+            profile = service.users().getProfile(userId='me').execute()
+
+            # Extract email and name
+            email = profile.get('emailAddress', 'Not available')
+
+            # Return success response with user's email and name
+            return JsonResponse({
+                'message': 'Google account is linked',
+                'email': email,
+            }, status=200)
+
+        else:
+            return JsonResponse({'error': 'Invalid credentials'}, status=400)
+    
+    except GoogleAuth.DoesNotExist:
+        # If no Google account is linked, raise a 400 error
+        return JsonResponse({'error': 'Google account not found'}, status=404)
+    except Exception as e:
+        # Handle any other exceptions
+        return JsonResponse({'error': str(e)}, status=500)
+    
+
 @api_view(['GET'])
 def gmail_callback(request):
     state = request.session.get('state')
     user = request.session.get('user')
+
     flow = Flow.from_client_secrets_file(
         os.path.join(settings.BASE_DIR, 'credentials.json'),
         scopes=SCOPES,
@@ -109,17 +146,34 @@ def gmail_callback(request):
     flow.fetch_token(authorization_response=request.build_absolute_uri())
     credentials = flow.credentials
 
-    google_auth, _ = GoogleAuth.objects.get_or_create(user=User.objects.filter(id=user).first())
-    google_auth.token = credentials.token
-    google_auth.refresh_token = credentials.refresh_token
-    google_auth.token_uri = credentials.token_uri
-    google_auth.client_id = credentials.client_id
-    google_auth.client_secret = credentials.client_secret
-    google_auth.scopes = ','.join(credentials.scopes)
-    google_auth.expiry = timezone.make_aware(credentials.expiry)
-    google_auth.save()
+    try:
+        # Get or create GoogleAuth object for the user
+        google_auth, _ = GoogleAuth.objects.get_or_create(user=User.objects.filter(id=user).first())
+        google_auth.token = credentials.token
+        google_auth.refresh_token = credentials.refresh_token
+        google_auth.token_uri = credentials.token_uri
+        google_auth.client_id = credentials.client_id
+        google_auth.client_secret = credentials.client_secret
+        google_auth.scopes = ','.join(credentials.scopes)
+        google_auth.expiry = timezone.make_aware(credentials.expiry)
+        google_auth.save()
 
-    return redirect('/email/emails/')
+        # Return an HTML page that closes the tab after a short delay
+        return HttpResponse("""
+            <html>
+                <head>
+                    <script type="text/javascript">
+                        window.close();
+                    </script>
+                </head>
+                <body>
+                    <p>Google account linked successfully. You can now close this tab.</p>
+                </body>
+            </html>
+        """)
+    except Exception as e:
+        # Handle any errors, if needed
+        return JsonResponse({'error': str(e)}, status=500)
 
 # Utility function to parse email headers
 def parse_sender(sender):
