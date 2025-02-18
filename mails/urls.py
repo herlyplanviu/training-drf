@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import check_linked_account, forward_email, get_replies, gmail_login, gmail_callback, get_emails, get_email_details, reply_email, revoke_account, send_email, start_gmail_auth
+from .views import *
 
 urlpatterns = [
     path('gmail/login/', gmail_login, name='gmail_login'),
@@ -12,8 +12,8 @@ urlpatterns = [
     # MAIN FUNCTION
     path('email/emails/', get_emails, name='get_emails'),
     path('email/replies/<str:thread_id>/', get_replies, name='get_replies'),
+    path('email/<str:email_id>/', get_email_details, name='get_email_details'),
     path('email/send/', send_email, name='send_emails'),
     path('email/reply/', reply_email, name='reply_emails'),
     path('email/forward/', forward_email, name='forward_emails'),
-    path('email/<str:email_id>/', get_email_details, name='get_email_details'),
 ]
