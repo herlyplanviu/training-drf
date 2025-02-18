@@ -251,7 +251,8 @@ def get_email_details(request, email_id):
         'message_id': msg['id'],
         'subject': subject,
         'sender': sender,
-        'body': body
+        'body': body,
+        'origin': msg
     })
 
 # Send Email
@@ -388,16 +389,31 @@ def forward_email(request):
         # Get the original body (supports plain text and HTML)
         parts = original_message.get('payload', {}).get('parts', [])
         body = ""
+        attachments = []  # List to hold any attachments
         for part in parts:
             mime_type = part.get('mimeType')
+            filename = part.get('filename', '')
+
+            # Check if there's an attachmentId
+            if 'attachmentId' in part['body']:
+                attachment_id = part['body']['attachmentId']
+                attachment_data = service.users().messages().attachments().get(userId='me', messageId=message_id, id=attachment_id).execute()
+
+                # Retrieve attachment data
+                attachment_data_content = base64.urlsafe_b64decode(attachment_data['data'])
+                attachments.append({
+                    'filename': filename or 'Unknown File',
+                    'data': attachment_data_content
+                })
+
+            # Process the body for text/plain or text/html
             if mime_type == 'text/plain' or mime_type == 'text/html':
                 body_data = part['body'].get('data')
                 if body_data:
                     body += base64.urlsafe_b64decode(body_data).decode('utf-8')
         
         # Construct the forwarded email content
-        # forward_subject = f"Fwd: {request.data.get('subject', '')}"
-        forward_subject = f"{request.POST.get('subject', '')}"
+        forward_subject = f"{request.POST.get('subject')}"
         forward_body = f"""
             <p>{additional_body}</p>
             <br><hr>
@@ -414,17 +430,30 @@ def forward_email(request):
         message['to'] = to
         message['subject'] = forward_subject
         message.attach(MIMEText(forward_body, 'html'))
-        
-        if attachment:
+
+        # Attach any existing attachments to the forwarded email
+        for attachment_data in attachments:
             part = MIMEBase('application', 'octet-stream')
-            part.set_payload(attachment.read())
+            part.set_payload(attachment_data['data'])
+            encoders.encode_base64(part)
+            part.add_header(
+                'Content-Disposition',
+                f'attachment; filename="{attachment_data["filename"]}"'
+            )
+            message.attach(part)
+
+        # Add the new attachment from the request if provided (as file-like object)
+        if attachment and hasattr(attachment, 'read'):
+            part = MIMEBase('application', 'octet-stream')
+            part.set_payload(attachment.read())  # Now `.read()` should work because it's a file-like object
             encoders.encode_base64(part)
             part.add_header(
                 'Content-Disposition',
                 f'attachment; filename={attachment.name}'
             )
             message.attach(part)
-            
+
+        # Encode the message to base64
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
 
         # Send the forwarded email
