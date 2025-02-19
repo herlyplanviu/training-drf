@@ -25,9 +25,13 @@ from google.auth.transport.requests import Request
 from users.serializers import GoogleAuthSerializer
 from django.utils import timezone
 from google.auth.exceptions import GoogleAuthError
+from googleapiclient.errors import HttpError
 
 
-SCOPES = ['https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/gmail.send']
+SCOPES = [
+    'https://www.googleapis.com/auth/gmail.modify',  # ✅ Allows modifying email labels (read/unread)
+    'https://www.googleapis.com/auth/gmail.send'     # ✅ Allows sending emails
+]
 
 # Helper function to extract credentials and handle expiry
 def get_credentials(user):
@@ -206,50 +210,73 @@ def get_emails(request):
     if not creds:
         return JsonResponse({"error": "Google account not linked or invalid token"}, status=400)
 
-    service = build('gmail', 'v1', credentials=creds)
-    folder = request.GET.get('folder', 'inbox')
-    page_token = request.GET.get('page_token', None)
-    
-    folder_queries = {
-        'inbox': 'in:inbox',
-        'sent': 'in:sent',
-        'junk': 'in:spam',
-        'trash': 'in:trash',
-        'archive': '-in:inbox -in:sent -in:spam -in:trash'
-    }
-    query = folder_queries.get(folder.lower(), 'in:inbox')
-
-    query_params = {'userId': 'me', 'maxResults': 10, 'q': query}
-    if page_token:
-        query_params['pageToken'] = page_token
-
     try:
+        # ✅ Initialize Gmail API service
+        service = build('gmail', 'v1', credentials=creds)
+
+        # ✅ Get folder and pagination token
+        folder = request.GET.get('folder', 'inbox')
+        page_token = request.GET.get('page_token', None)
+
+        # ✅ Define query for the selected folder
+        folder_queries = {
+            'inbox': 'in:inbox',
+            'sent': 'in:sent',
+            'junk': 'in:spam',
+            'trash': 'in:trash',
+            'archive': '-in:inbox -in:sent -in:spam -in:trash'
+        }
+        query = folder_queries.get(folder.lower(), 'in:inbox')
+
+        # ✅ Fetch message list (only IDs)
+        query_params = {
+            'userId': 'me',
+            'maxResults': 15,  # ✅ Increase batch size
+            'q': query
+        }
+        if page_token:
+            query_params['pageToken'] = page_token
+
         results = service.users().messages().list(**query_params).execute()
         messages = results.get('messages', [])
         next_page_token = results.get('nextPageToken')
 
+        if not messages:
+            return JsonResponse({'emails': [], 'next_page_token': None}, safe=False)
+
+        # ✅ Use `batchGet` to retrieve multiple emails in one request
+        def batch_get_request(request_id, response, exception):
+            if exception is None:
+                emails.append(process_message(response))
+
+        batch = service.new_batch_http_request(callback=batch_get_request)
         emails = []
+
         for msg in messages:
-            message_detail = service.users().messages().get(userId='me', id=msg['id']).execute()
-            headers = message_detail.get('payload', {}).get('headers', [])
-            subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
-            sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
-            is_read = 'UNREAD' not in message_detail.get('labelIds', [])
-            snippet = message_detail.get('snippet')
-            thread_id = message_detail.get('threadId')
-            
-            emails.append({
-                'thread_id': thread_id,
-                'message_id': msg['id'],
-                'subject': subject,
-                'sender': parse_sender(sender),
-                'snippet': snippet,
-                'is_read': is_read,
-            })
+            batch.add(service.users().messages().get(userId='me', id=msg['id'], format='metadata'))
+
+        batch.execute()  # ✅ Executes all requests in parallel
 
         return JsonResponse({'emails': emails, 'next_page_token': next_page_token}, safe=False)
-    except Exception as e:
-        return JsonResponse({"error": f"Failed to get emails: {str(e)}"}, status=500)
+
+    except HttpError as e:
+        return JsonResponse({"error": f"Failed to get emails: {e}"}, status=500)
+
+def process_message(message_detail):
+    """Extracts email details from API response"""
+    headers = message_detail.get('payload', {}).get('headers', [])
+    subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
+    sender = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
+    is_read = 'UNREAD' not in message_detail.get('labelIds', [])
+
+    return {
+        'thread_id': message_detail.get('threadId'),
+        'message_id': message_detail['id'],
+        'subject': subject,
+        'sender': parse_sender(sender),
+        'snippet': message_detail.get('snippet', ''),
+        'is_read': is_read,
+    }
 
 # Function to fetch replies
 @api_view(['GET'])
@@ -498,3 +525,53 @@ def forward_email(request):
     
     except Exception as error:
         return JsonResponse({'error': f'An error occurred: {error}'}, status=500)
+
+def modify_email_status(user, message_id, is_read):
+    """Helper function to modify email read/unread status."""
+    creds = get_credentials(user)
+    if not creds:
+        return {'error': 'Google account not linked or invalid token'}
+
+    try:
+        # Initialize Gmail service
+        service = build('gmail', 'v1', credentials=creds)
+
+        # Labels to modify
+        modify_labels = {
+            'removeLabelIds': ['UNREAD'] if is_read else [],
+            'addLabelIds': [] if is_read else ['UNREAD']
+        }
+
+        # Update email status
+        service.users().messages().modify(
+            userId='me',
+            id=message_id,
+            body=modify_labels
+        ).execute()
+
+        return {'message': 'Email status updated successfully'}
+
+    except Exception as error:
+        return {'error': f'An error occurred: {error}'}
+    
+@api_view(['POST'])
+@authentication_classes([JWTAuthentication, BasicAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated])
+def read_email(request, message_id):
+    if not message_id:
+        return JsonResponse({'error': 'Missing email field: message_id'}, status=400)
+
+    response = modify_email_status(request.user, message_id, is_read=True)
+    return JsonResponse(response, status=200 if 'message' in response else 500)
+
+@api_view(['POST'])
+@authentication_classes([JWTAuthentication, BasicAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated])
+def unread_email(request, message_id):
+    """Marks an email as unread (adds 'UNREAD' label)."""
+
+    if not message_id:
+        return JsonResponse({'error': 'Missing email field: message_id'}, status=400)
+
+    response = modify_email_status(request.user, message_id, is_read=False)
+    return JsonResponse(response, status=200 if 'message' in response else 500)

@@ -16,4 +16,6 @@ urlpatterns = [
     path('email/send/', send_email, name='send_emails'),
     path('email/reply/', reply_email, name='reply_emails'),
     path('email/forward/', forward_email, name='forward_emails'),
+    path('email/read/<str:message_id>/', read_email, name='read_email'),
+    path('email/unread/<str:message_id>/', unread_email, name='unread_email'),
 ]
