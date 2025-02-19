@@ -4,9 +4,9 @@ from .views import *
 urlpatterns = [
     path('gmail/login/', gmail_login, name='gmail_login'),
     # AUTH
-    path('gmail/link/', start_gmail_auth, name='link_account'),
-    path('gmail/revoke/', revoke_account, name='revoke_account'),
-    path('gmail/check/', check_linked_account, name="check_linked_account"),
+    path('google/link/', start_gmail_auth, name='link_account'),
+    path('google/revoke/', revoke_account, name='revoke_account'),
+    path('google/check/', check_linked_account, name="check_linked_account"),
     # CALLBACK
     path('gmail/callback/', gmail_callback, name='gmail_callback'),
     # MAIN FUNCTION

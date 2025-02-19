@@ -69,7 +69,7 @@ def gmail_login(request):
 def start_gmail_auth(request):
     # Check if Content-Type is application/json
     server_url = request.build_absolute_uri('/')  # Get the base server URL
-    custom_url = f"{server_url}gmail/link/?user={request.GET.get('user')}"
+    custom_url = f"{server_url}google/link/?user={request.GET.get('user')}"
     
     # Check if Content-Type is application/json
     if request.content_type == 'application/json':
