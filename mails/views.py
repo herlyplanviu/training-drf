@@ -42,7 +42,8 @@ def get_credentials(user):
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
             google_auth.token = creds.token
-            google_auth.refresh_token = creds.refresh_token
+            if creds.refresh_token is not None and creds.refresh_token != '':
+                google_auth.refresh_token = creds.refresh_token
             google_auth.token_uri = creds.token_uri
             google_auth.client_id = creds.client_id
             google_auth.client_secret = creds.client_secret
@@ -59,6 +60,17 @@ def gmail_login(request):
 
 # Gmail Authentication Flow
 def start_gmail_auth(request):
+    # Check if Content-Type is application/json
+    server_url = request.build_absolute_uri('/')  # Get the base server URL
+    custom_url = f"{server_url}gmail/link/?user={request.GET.get('user')}"
+    
+    # Check if Content-Type is application/json
+    if request.content_type == 'application/json':
+        return JsonResponse({
+            'message': 'Please open me in browser tab', 
+            'url': custom_url
+        }, status=400)
+    
     flow = Flow.from_client_secrets_file(
         os.path.join(settings.BASE_DIR, 'credentials.json'),
         scopes=SCOPES,
@@ -150,7 +162,8 @@ def gmail_callback(request):
         # Get or create GoogleAuth object for the user
         google_auth, _ = GoogleAuth.objects.get_or_create(user=User.objects.filter(id=user).first())
         google_auth.token = credentials.token
-        google_auth.refresh_token = credentials.refresh_token
+        if credentials.refresh_token is not None and credentials.refresh_token != '':
+            google_auth.refresh_token = credentials.refresh_token
         google_auth.token_uri = credentials.token_uri
         google_auth.client_id = credentials.client_id
         google_auth.client_secret = credentials.client_secret

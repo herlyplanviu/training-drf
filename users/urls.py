@@ -6,4 +6,5 @@ urlpatterns = [
     # ex: /polls/
     path("profile/", views.get_user, name="profile"),
     path('profile/change-avatar/', views.change_avatar, name='change-avatar'),
+    path("users/", views.get_users, name="users")
 ]

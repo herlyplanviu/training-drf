@@ -1,11 +1,13 @@
+from django.http import JsonResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.decorators import permission_classes, authentication_classes
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework import status
 from users.serializers import UserProfileSerializer
 from rest_framework.authentication import BasicAuthentication, SessionAuthentication
+from .models import User
     
 # Create your views here.
 @api_view(['GET'])
@@ -53,3 +55,14 @@ def change_avatar(request, version=None):
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# Create your views here.
+@api_view(['GET'])
+@authentication_classes([JWTAuthentication,BasicAuthentication,SessionAuthentication])
+@permission_classes([IsAuthenticatedOrReadOnly])
+def get_users(request, version=None):
+    users = User.objects.all()
+    
+    serializers = UserProfileSerializer(users, many=True)
+
+    return JsonResponse(serializers.data, safe=False)

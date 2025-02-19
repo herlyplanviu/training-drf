@@ -12,7 +12,7 @@ urlpatterns = [
     # MAIN FUNCTION
     path('email/emails/', get_emails, name='get_emails'),
     path('email/replies/<str:thread_id>/', get_replies, name='get_replies'),
-    path('email/<str:email_id>/', get_email_details, name='get_email_details'),
+    path('email/email/<str:email_id>/', get_email_details, name='get_email_details'),
     path('email/send/', send_email, name='send_emails'),
     path('email/reply/', reply_email, name='reply_emails'),
     path('email/forward/', forward_email, name='forward_emails'),
