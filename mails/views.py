@@ -29,8 +29,11 @@ from googleapiclient.errors import HttpError
 
 
 SCOPES = [
-    'https://www.googleapis.com/auth/gmail.modify',  # ✅ Allows modifying email labels (read/unread)
-    'https://www.googleapis.com/auth/gmail.send'     # ✅ Allows sending emails
+    'https://www.googleapis.com/auth/gmail.modify',  # ✅ Modify Gmail (read & mark as read/unread)
+    'https://www.googleapis.com/auth/gmail.send',  # ✅ Send emails
+    'https://www.googleapis.com/auth/userinfo.email',  # ✅ Get user's email
+    'https://www.googleapis.com/auth/userinfo.profile',  # ✅ Get user's name
+    'openid'  # ✅ Required for Google login
 ]
 
 # Helper function to extract credentials and handle expiry
@@ -122,19 +125,24 @@ def check_linked_account(request):
         creds = get_credentials(request.user)
         
         if creds:
-            # Initialize Gmail service
-            service = build('gmail', 'v1', credentials=creds)
+            # # Initialize Gmail service
+            # service = build('gmail', 'v1', credentials=creds)
 
-            # Get user profile (email and name)
-            profile = service.users().getProfile(userId='me').execute()
+            # # Get user profile (email and name)
+            # profile = service.users().getProfile(userId='me').execute()
 
-            # Extract email and name
-            email = profile.get('emailAddress', 'Not available')
+            # # Extract email and name
+            # email = profile.get('emailAddress', 'Not available')
+            
+            user_info_url = "https://www.googleapis.com/oauth2/v2/userinfo"
+            headers = {"Authorization": f"Bearer {creds.token}"}
+            
+            response = requests.get(user_info_url, headers=headers)
 
             # Return success response with user's email and name
             return JsonResponse({
                 'message': 'Google account is linked',
-                'email': email,
+                'account': response.json(),
             }, status=200)
 
         else:
@@ -142,10 +150,10 @@ def check_linked_account(request):
     
     except GoogleAuth.DoesNotExist:
         # If no Google account is linked, raise a 400 error
-        return JsonResponse({'error': 'Google account not found'}, status=404)
+        return JsonResponse({'message': 'Google account not found','account':None}, status=404)
     except Exception as e:
         # Handle any other exceptions
-        return JsonResponse({'error': str(e)}, status=500)
+        return JsonResponse({'message': str(e)}, status=500)
     
 
 @api_view(['GET'])
@@ -270,8 +278,8 @@ def process_message(message_detail):
     is_read = 'UNREAD' not in message_detail.get('labelIds', [])
 
     return {
-        'thread_id': message_detail.get('threadId'),
         'message_id': message_detail['id'],
+        'thread_id': message_detail.get('threadId'),
         'subject': subject,
         'sender': parse_sender(sender),
         'snippet': message_detail.get('snippet', ''),
@@ -294,8 +302,8 @@ def get_replies(request, thread_id):
             thread = service.users().threads().get(userId='me', id=thread_id).execute()
             emails = [
                 {
-                    'thread_id': thread_id,
                     'message_id': message.get('id'),
+                    'thread_id': thread_id,
                     'subject': next((h['value'] for h in message['payload'].get('headers', []) if h['name'].lower() == 'subject'), 'No Subject'),
                     'sender': parse_sender(next((h['value'] for h in message['payload'].get('headers', []) if h['name'] == 'From'), 'Unknown Sender')),
                     'snippet': message.get('snippet'),
