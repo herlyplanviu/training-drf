@@ -26,6 +26,8 @@ from users.serializers import GoogleAuthSerializer
 from django.utils import timezone
 from google.auth.exceptions import GoogleAuthError
 from googleapiclient.errors import HttpError
+from rest_framework.views import APIView
+
 
 
 SCOPES = [
@@ -583,3 +585,58 @@ def unread_email(request, message_id):
 
     response = modify_email_status(request.user, message_id, is_read=False)
     return JsonResponse(response, status=200 if 'message' in response else 500)
+
+class GetEmailsView(APIView):
+    authentication_classes = [JWTAuthentication, BasicAuthentication, SessionAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        creds = get_credentials(request.user)
+        if not creds:
+            return JsonResponse({"error": "Google account not linked or invalid token"}, status=400)
+
+        try:
+            service = build('gmail', 'v1', credentials=creds)
+            folder = request.GET.get('folder', 'inbox')
+            page_token = request.GET.get('page_token', None)
+
+            folder_queries = {
+                'inbox': 'in:inbox',
+                'sent': 'in:sent',
+                'junk': 'in:spam',
+                'trash': 'in:trash',
+                'archive': '-in:inbox -in:sent -in:spam -in:trash'
+            }
+            query = folder_queries.get(folder.lower(), 'in:inbox')
+
+            query_params = {
+                'userId': 'me',
+                'maxResults': 15,
+                'q': query
+            }
+            if page_token:
+                query_params['pageToken'] = page_token
+
+            results = service.users().messages().list(**query_params).execute()
+            messages = results.get('messages', [])
+            next_page_token = results.get('nextPageToken')
+
+            if not messages:
+                return JsonResponse({'emails': [], 'next_page_token': None}, safe=False)
+
+            def batch_get_request(request_id, response, exception):
+                if exception is None:
+                    emails.append(process_message(response))
+
+            batch = service.new_batch_http_request(callback=batch_get_request)
+            emails = []
+
+            for msg in messages:
+                batch.add(service.users().messages().get(userId='me', id=msg['id'], format='metadata'))
+
+            batch.execute()
+
+            return JsonResponse({'emails': emails, 'next_page_token': next_page_token}, safe=False)
+
+        except HttpError as e:
+            return JsonResponse({"error": f"Failed to get emails: {e}"}, status=500)

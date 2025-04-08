@@ -18,4 +18,6 @@ urlpatterns = [
     path('email/forward/', forward_email, name='forward_emails'),
     path('email/read/<str:message_id>/', read_email, name='read_email'),
     path('email/unread/<str:message_id>/', unread_email, name='unread_email'),
+    # TEST CBV
+    path('email/emailsv2/', GetEmailsView.as_view(), name='get-emails'),
 ]

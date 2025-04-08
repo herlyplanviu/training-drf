@@ -47,7 +47,9 @@ INSTALLED_APPS = [
     'answers.apps.AnswersConfig',
     'quizzes.apps.QuizzesConfig',
     'mails.apps.MailsConfig',
-    'face_recognitions.apps.FaceRecognitionsConfig'
+    'face_recognitions.apps.FaceRecognitionsConfig',
+    'liveness',
+    "channels",
 ]
 
 MIDDLEWARE = [
@@ -162,3 +164,5 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # settings.py
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+ASGI_APPLICATION = "core.asgi.application"
