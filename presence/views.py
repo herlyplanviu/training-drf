@@ -19,6 +19,7 @@ class PresenceCheckAPIView(APIView):
         distance = geodesic(REFERENCE_LOCATION, user_location).meters
 
         if distance <= DISTANCE:
+            # TODO: insert to database or anything to handle presence
             return Response({"detail": "Success. You are within the allowed area."}, status=status.HTTP_200_OK)
         else:
             return Response({"detail": "You are out of area"}, status=status.HTTP_403_FORBIDDEN)
