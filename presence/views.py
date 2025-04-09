@@ -5,6 +5,7 @@ from geopy.distance import geodesic
 
 # Reference location
 REFERENCE_LOCATION = (-7.9673435, 112.6267206)  # (lat, lon)
+DISTANCE = 20 # in meters
 
 class PresenceCheckAPIView(APIView):
     def post(self, request, *args, **kwargs):
@@ -17,7 +18,7 @@ class PresenceCheckAPIView(APIView):
         user_location = (lat, lon)
         distance = geodesic(REFERENCE_LOCATION, user_location).meters
 
-        if distance <= 20:
+        if distance <= DISTANCE:
             return Response({"detail": "Success. You are within the allowed area."}, status=status.HTTP_200_OK)
         else:
             return Response({"detail": "You are out of area"}, status=status.HTTP_403_FORBIDDEN)
