@@ -138,7 +138,7 @@ project/
 └── README.md
 ```
 
-To run WebSocket (e.g., using Django Channels):
+To run WebSocket (e.g., using Uvicorn):
 
 ```bash
 ./run-ws.sh
