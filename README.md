@@ -117,3 +117,31 @@ You can test the WebSocket using browser tools or libraries such as:
   const ws = new WebSocket("ws://localhost:8080/ws/liveness/?user_id=1");
   ws.onmessage = (e) => console.log(e.data);
   ```
+
+## 📂 Directory Structure (Simplified)
+
+```
+project/
+│
+├── face_recognitions/              # Handles face training and recognition
+│
+├── liveness/
+│   ├── views.py                    # Liveness check views (e.g., WebSocket)
+│   ├── urls.py                     # Routes for liveness WebSocket/API
+│
+├── presence/
+│   ├── views.py                    # PresenceCheckAPIView and logic
+│   ├── urls.py                     # URL routing for presence check
+│
+├── manage.py
+├── requirements.txt
+└── README.md
+```
+
+To run WebSocket (e.g., using Django Channels):
+
+```bash
+./run-ws.sh
+```
+
+---
