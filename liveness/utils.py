@@ -1,8 +1,11 @@
+import json
 from uuid import UUID
 import cv2
 import numpy as np
 import face_recognition
 import base64
+
+from users.models import Person
 from .modules.blink import detect_blink
 from .modules.open_mouth import detect_mouth_open
 from .modules.nod import detect_nod
@@ -56,3 +59,14 @@ def detect_challenge_action(challenge, frame, landmarks):
         (challenge == "surprise" and detect_emotion(frame, "surprise")) or
         (challenge == "nod" and detect_nod(landmarks))
     )
+    
+@sync_to_async
+def get_person(user_id):
+    return Person.objects.get(user_id=user_id)
+
+async def send_error(self, message):
+    await self.send(text_data=json.dumps({
+        "error": message,
+        "challenge": None,
+        "action_detected": False
+    }))
