@@ -38,7 +38,7 @@ Send a face image to the API to register and associate it with the user.
 
 ```bash
 curl --request POST \
-  --url http://0.0.0.0:8008/api/face/train/ \
+  --url http://localhost:8000/api/face/train/ \
   --header 'Authorization: Bearer $TOKEN' \
   --header 'Content-Type: multipart/form-data' \
   --form image=@IMG_6885.jpg
@@ -68,7 +68,7 @@ Send your current GPS coordinates (latitude and longitude) to the presence-check
 
 ```bash
 curl --request POST \
-  --url http://0.0.0.0:8008/api/presence/presence-check/ \
+  --url http://localhost:8000/api/presence/presence-check/ \
   --header 'Authorization: Bearer $TOKEN' \
   --header 'Content-Type: application/json' \
   --data '{
